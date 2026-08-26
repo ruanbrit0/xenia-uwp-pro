@@ -4,6 +4,12 @@ You must have a 64-bit machine for building and running the project. Always
 run your system updater before building and make sure you have the latest
 drivers.
 
+> UWP fork note: this document is the general desktop/Premake build guide
+> inherited from Xenia Canary. For the local UWP/Xbox app flow, see
+> `README.md` and `AGENTS.md`. On Windows in
+> this repository, run commands through `./xb.ps1 <command>` instead of calling
+> `xb` directly.
+
 ## Setup
 
 ### Windows
@@ -14,26 +20,25 @@ drivers.
   * Ensure Python is in PATH.
 * Windows 11 SDK version 10.0.22000.0 (for Visual Studio 2019, this or any newer version)
 
-```
-git clone https://github.com/xenia-canary/xenia-canary.git
-cd xenia-canary
-xb setup
+```powershell
+# From this repository root:
+./xb.ps1 setup
 
 # Build on command line (add --config=release for release):
-xb build
+./xb.ps1 build
 
 
 # Pull latest changes, rebase, update submodules, and run premake:
-xb pull
+./xb.ps1 pull
 
 # Run premake and open Visual Studio (run the 'xenia-app' project):
-xb devenv
+./xb.ps1 devenv
 
 # Run premake to update the sln/vcproj's:
-xb premake
+./xb.ps1 premake
 
 # Format code to the style guide:
-xb format
+./xb.ps1 format
 ```
 <!--
 # Remove intermediate files and build outputs (doesn't work on Linux):

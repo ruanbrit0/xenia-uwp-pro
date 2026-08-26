@@ -46,6 +46,9 @@ The buildbot is running LLVM 3.8.0. If you are noticing style differences
 between your local lint/format and the buildbot, ensure you are running that
 version.
 
+Fork note: on Windows in this repository, run these commands through the wrapper,
+for example `./xb.ps1 format`, `./xb.ps1 lint --all`, or `./xb.ps1 lint --origin`.
+
 ## Tools
 
 ### clang-format

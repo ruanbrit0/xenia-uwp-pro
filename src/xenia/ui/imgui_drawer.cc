@@ -159,9 +159,6 @@ void ImGuiDrawer::Initialize() {
   io.DisplayFramebufferScale.x = 2.4f;
   io.DisplayFramebufferScale.y = 2.4f;
   io.FontGlobalScale = 2.4f; 
-  io.KeyMap[ImGuiKey_Backspace] = '\b';
-  io.KeyMap[ImGuiKey_Enter] = '\r';
-
 #ifndef XE_PLATFORM_WINRT
   // Setup the font glyphs.
   ImFontConfig font_config;
@@ -745,17 +742,17 @@ void ImGuiDrawer::OnKey(KeyEvent& e, bool is_down) {
   }
   switch (virtual_key) {
     case VirtualKey::kShift:
-      io.KeyShift = is_down;
+      io.AddKeyEvent(ImGuiMod_Shift, is_down);
       break;
     case VirtualKey::kControl:
-      io.KeyCtrl = is_down;
+      io.AddKeyEvent(ImGuiMod_Ctrl, is_down);
       break;
     case VirtualKey::kMenu:
       // FIXME(Triang3l): Doesn't work in xenia-ui-window-demo.
-      io.KeyAlt = is_down;
+      io.AddKeyEvent(ImGuiMod_Alt, is_down);
       break;
     case VirtualKey::kLWin:
-      io.KeySuper = is_down;
+      io.AddKeyEvent(ImGuiMod_Super, is_down);
       break;
     default:
       break;

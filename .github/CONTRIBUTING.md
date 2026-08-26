@@ -33,6 +33,7 @@ various IDE auto formatting tools so that you can avoid having to clean things
 up later, so be sure to check it out.
 
 Basically: run `xb format` before you add a commit and you won't have a problem.
+On Windows in this UWP fork, run the wrapper explicitly as `./xb.ps1 format`.
 
 ## Referencing Sources
 
