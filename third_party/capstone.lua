@@ -11,7 +11,7 @@ project("capstone")
     "CAPSTONE_USE_SYS_DYN_MEM",
     "_LIB",
   })
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
 	buildoptions({
 		"/Os",
 		"/O1"

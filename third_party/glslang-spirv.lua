@@ -10,7 +10,7 @@ project("glslang-spirv")
   })
   includedirs({
   })
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
     buildoptions({
       "/Os",
       "/O1"

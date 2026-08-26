@@ -54,7 +54,7 @@ filter("configurations:Checked")
   defines({
     "DEBUG",
   })
-filter({"configurations:Checked", "platforms:Windows"})
+filter({"configurations:Checked", "platforms:Windows or Windows-UWP"})
   buildoptions({
     "/RTCsu",           -- Full Run-Time Checks.
   })
@@ -62,7 +62,7 @@ filter({"configurations:Checked", "platforms:Linux"})
   defines({
     "_GLIBCXX_DEBUG",   -- libstdc++ debug mode
   })
-filter({"configurations:Release", "platforms:Windows"})
+filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
 	buildoptions({
 		"/Gw", 
 		"/GS-", 
@@ -159,7 +159,7 @@ filter("platforms:Android-*")
     "log",
   })
 
-filter("platforms:Windows")
+filter("platforms:Windows or Windows-UWP")
   system("windows")
   toolset("msc")
   buildoptions({
@@ -203,6 +203,11 @@ filter("platforms:Windows")
     "bcrypt",
   })
 
+filter("platforms:Windows-UWP")
+  defines({
+    "XE_PLATFORM_WINRT=1",
+  })
+
 -- Embed the manifest for things like dependencies and DPI awareness.
 filter({"platforms:Windows", "kind:ConsoleApp or WindowedApp"})
   files({
@@ -234,7 +239,7 @@ workspace("xenia")
         ["ARCHS"] = "x86_64"
       })
     elseif os.istarget("windows") then
-      platforms({"Windows"})
+      platforms({"Windows", "Windows-UWP"})
       -- 10.0.15063.0: ID3D12GraphicsCommandList1::SetSamplePositions.
       -- 10.0.19041.0: D3D12_HEAP_FLAG_CREATE_NOT_ZEROED.
       -- 10.0.22000.0: DWMWA_WINDOW_CORNER_PREFERENCE.
@@ -254,6 +259,60 @@ workspace("xenia")
   include("third_party/cxxopts.lua")
   include("third_party/cpptoml.lua")
   include("third_party/FFmpeg/premake5.lua")
+  if os.istarget("windows") then
+    project("libavcodec")
+      filter({"platforms:Windows-UWP", "configurations:Debug or configurations:Checked"})
+        optimize("Size")
+        removebuildoptions({
+          "/RTCsu",
+        })
+      filter({"platforms:Windows-UWP", "configurations:Release"})
+        removeflags({
+          "LinkTimeOptimization",
+        })
+      filter("platforms:Windows-UWP")
+        includedirs({
+          "third_party/FFmpeg/compat/atomics/win32",
+        })
+        links({
+          "bcrypt",
+        })
+        files({
+          "third_party/FFmpeg/libavcodec/file_open.c",
+          "third_party/FFmpeg/libavcodec/x86/constants.c",
+          "third_party/FFmpeg/libavcodec/x86/fdct.c",
+          "third_party/FFmpeg/libavcodec/x86/fdctdsp_init.c",
+          "third_party/FFmpeg/libavcodec/x86/fft_init.c",
+          "third_party/FFmpeg/libavcodec/x86/idctdsp_init.c",
+        })
+      filter({})
+
+    project("libavutil")
+      filter({"platforms:Windows-UWP", "configurations:Debug or configurations:Checked"})
+        optimize("Size")
+        removebuildoptions({
+          "/RTCsu",
+        })
+      filter({"platforms:Windows-UWP", "configurations:Release"})
+        removeflags({
+          "LinkTimeOptimization",
+        })
+      filter("platforms:Windows-UWP")
+        includedirs({
+          "third_party/FFmpeg/compat/atomics/win32",
+        })
+        links({
+          "bcrypt",
+        })
+        files({
+          "third_party/FFmpeg/libavutil/x86/cpu.c",
+          "third_party/FFmpeg/libavutil/x86/fixed_dsp_init.c",
+          "third_party/FFmpeg/libavutil/x86/float_dsp_init.c",
+          "third_party/FFmpeg/libavutil/x86/imgutils_init.c",
+          "third_party/FFmpeg/libavutil/x86/lls_init.c",
+        })
+      filter({})
+  end
   include("third_party/fmt.lua")
   include("third_party/glslang-spirv.lua")
   include("third_party/imgui.lua")

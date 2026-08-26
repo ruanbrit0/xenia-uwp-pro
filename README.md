@@ -17,7 +17,7 @@ Build UWP direto por MSBuild:
 O pacote gerado fica em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.6.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.7.0_Debug_Test\
 ```
 
 Notas locais de build e manutencao UWP estao em `AGENTS.md`.

@@ -12,6 +12,7 @@
 #include <cfloat>
 #include <cstring>
 
+#include <xenia/hid/input.h>
 #include "third_party/imgui/imgui.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/clock.h"
@@ -22,12 +23,11 @@
 #include "xenia/ui/resources.h"
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/window.h"
-#include <xenia/hid/input.h>
 
 #if XE_PLATFORM_WINRT
-#include "xenia-canary-uwp/XeniaUWP.h"
 #include "xenia-canary-uwp/UWPUtil.h"
 #include "xenia-canary-uwp/WinRTKeyboard.h"
+#include "xenia-canary-uwp/XeniaUWP.h"
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -155,11 +155,11 @@ void ImGuiDrawer::Initialize() {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-  io.NavVisible = true; 
+  io.NavVisible = true;
   io.DisplayFramebufferScale.x = 2.4f;
   io.DisplayFramebufferScale.y = 2.4f;
-  io.FontGlobalScale = 2.4f; 
-#ifndef XE_PLATFORM_WINRT
+  io.FontGlobalScale = 2.4f;
+#if !XE_PLATFORM_WINRT
   // Setup the font glyphs.
   ImFontConfig font_config;
   font_config.OversampleH = font_config.OversampleV = 1;
@@ -178,8 +178,8 @@ void ImGuiDrawer::Initialize() {
   ImFontConfig config;
   config.MergeMode = true;
   io.Fonts->AddFontFromFileTTF("Assets/Roboto-Regular.ttf", 13, 0);
-  io.Fonts->AddFontFromFileTTF("Assets/NotoSansJP-Regular.ttf", 13,
-                               &config, io.Fonts->GetGlyphRangesJapanese());
+  io.Fonts->AddFontFromFileTTF("Assets/NotoSansJP-Regular.ttf", 13, &config,
+                               io.Fonts->GetGlyphRangesJapanese());
 #endif
 
   auto& style = ImGui::GetStyle();
@@ -398,7 +398,7 @@ void ImGuiDrawer::InitializeFonts() {
   // Windows.
   io.IniFilename = nullptr;
 
-#ifndef XE_PLATFORM_WINRT
+#if !XE_PLATFORM_WINRT
   ImFontConfig font_config;
   font_config.OversampleH = font_config.OversampleV = 2;
   font_config.PixelSnapH = true;
@@ -483,10 +483,14 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   }
 
   if (dialogs_.empty()) {
+#if XE_PLATFORM_WINRT
     UWP::SetUIOpen(false);
+#endif
     return;
   } else {
+#if XE_PLATFORM_WINRT
     UWP::SetUIOpen(true);
+#endif
   }
 
   ImGui::SetCurrentContext(internal_state_);
@@ -508,10 +512,10 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   float physical_to_logical =
       float(window_->GetMediumDpi()) / float(window_->GetDpi());
   io.DisplaySize.x = window_->GetActualPhysicalWidth() * physical_to_logical;
-  io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;  
-  io.DisplayFramebufferScale.x = ((float) io.DisplaySize.x / 1920.0f) * 2.4f;
-  io.DisplayFramebufferScale.y = ((float) io.DisplaySize.y / 1080.0f) * 2.4f;
-  io.FontGlobalScale = ((float) io.DisplaySize.x / 1920.0f) * 2.4f; 
+  io.DisplaySize.y = window_->GetActualPhysicalHeight() * physical_to_logical;
+  io.DisplayFramebufferScale.x = ((float)io.DisplaySize.x / 1920.0f) * 2.4f;
+  io.DisplayFramebufferScale.y = ((float)io.DisplaySize.y / 1080.0f) * 2.4f;
+  io.FontGlobalScale = ((float)io.DisplaySize.x / 1920.0f) * 2.4f;
 
   ImGui::NewFrame();
 
@@ -549,9 +553,7 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
 }
 
 void ImGuiDrawer::SetIgnoreInput(bool ignore) { ignore_input = ignore; }
-bool ImGuiDrawer::GetIgnoreInput() {
-    return ignore_input;
-}
+bool ImGuiDrawer::GetIgnoreInput() { return ignore_input; }
 
 void ImGuiDrawer::ClearDialogs() {
   size_t dialog_loop = 0;
@@ -560,7 +562,9 @@ void ImGuiDrawer::ClearDialogs() {
     RemoveDialog(dialogs_[dialog_loop++]);
   }
 
+#if XE_PLATFORM_WINRT
   UWP::SetUIOpen(false);
+#endif
 }
 
 void ImGuiDrawer::RenderDrawLists(ImDrawData* data,

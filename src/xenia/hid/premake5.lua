@@ -38,7 +38,7 @@ project("xenia-hid-demo")
   resincludedirs({
     project_root,
   })
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
     buildoptions({
       "/Os",
       "/O1"
@@ -57,7 +57,7 @@ project("xenia-hid-demo")
       "X11-xcb",
     })
 
-  filter("platforms:Windows")
+  filter("platforms:Windows or Windows-UWP")
     links({
       "xenia-hid-winkey",
       "xenia-hid-xinput",

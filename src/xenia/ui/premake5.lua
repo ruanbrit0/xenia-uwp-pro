@@ -14,7 +14,7 @@ project("xenia-ui")
   local_platform_files()
   removefiles({"*_demo.cc"})
   removefiles({"windowed_app_main_*.cc"})
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
     buildoptions({
       "/Os",
       "/O1"
@@ -23,7 +23,7 @@ project("xenia-ui")
     -- Exports JNI functions.
     wholelib("On")
 
-  filter("platforms:Windows")
+  filter("platforms:Windows or Windows-UWP")
     links({
       "dwmapi",
       "dxgi",

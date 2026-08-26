@@ -10,7 +10,7 @@ project("xenia-ui-d3d12")
     "xenia-base",
     "xenia-ui",
   })
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows or Windows-UWP"})
     buildoptions({
       "/Os",
       "/O1"

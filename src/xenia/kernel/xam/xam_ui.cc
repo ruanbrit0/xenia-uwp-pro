@@ -9,6 +9,7 @@
 
 #include "third_party/imgui/imgui.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/string_util.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_flags.h"
@@ -20,7 +21,9 @@
 #include "xenia/ui/window.h"
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/xbox.h"
+#if XE_PLATFORM_WINRT
 #include "xenia-canary-uwp/WinRTKeyboard.h"
+#endif
 
 namespace xe {
 namespace kernel {
@@ -237,7 +240,8 @@ class MessageBoxDialog : public XamDialog {
     auto flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_None;
 
     auto now = std::chrono::high_resolution_clock::now();
-    auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_);
+    auto interval =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - clock_);
     if (interval.count() < 750) flags |= ImGuiWindowFlags_NoInputs;
 
     if (ImGui::BeginPopupModal(title_.c_str(), nullptr, flags)) {
@@ -443,11 +447,13 @@ class KeyboardInputDialog : public XamDialog {
 
       ImGui::SetItemDefaultFocus();
       ImGui::InputText("##body", text_buffer_.data(), text_buffer_.size(),
-                           ImGuiInputTextFlags_EnterReturnsTrue);
+                       ImGuiInputTextFlags_EnterReturnsTrue);
 
       if (ImGui::IsItemHovered() &&
           ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown)) {
+#if XE_PLATFORM_WINRT
         UWP::ShowKeyboard();
+#endif
         ImGui::SetKeyboardFocusHere(-1);
       }
 

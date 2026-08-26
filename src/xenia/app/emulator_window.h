@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 
+#include "xenia/base/platform.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/ui/imgui_dialog.h"
@@ -177,17 +178,18 @@ class EmulatorWindow {
     EmulatorWindow& emulator_window_;
   };
 
+#if XE_PLATFORM_WINRT
   class WinRTFrontendDialog final : public ui::ImGuiDialog {
    public:
     WinRTFrontendDialog(ui::ImGuiDrawer* imgui_drawer,
-                   EmulatorWindow& emulator_window)
+                        EmulatorWindow& emulator_window)
         : ui::ImGuiDialog(imgui_drawer), emulator_window_(emulator_window) {
-    
-        auto cl = dynamic_cast<cvar::ConfigVar<std::string>*>(
-        cvar::ConfigVars->find("cl")->second);
-        std::string cl_text = (std::string)cl->GetTypedConfigValue();
-        memcpy(cl_buffer, cl_text.data(), std::min((int) cl_text.size(), 128));
+      auto cl = dynamic_cast<cvar::ConfigVar<std::string>*>(
+          cvar::ConfigVars->find("cl")->second);
+      std::string cl_text = (std::string)cl->GetTypedConfigValue();
+      memcpy(cl_buffer, cl_text.data(), std::min((int)cl_text.size(), 128));
     }
+
    protected:
     void OnDraw(ImGuiIO& io) override;
 
@@ -201,7 +203,8 @@ class EmulatorWindow {
     char cl_buffer[128];
     bool show_path_warning_ = false;
   };
-  
+#endif
+
   explicit EmulatorWindow(Emulator* emulator,
                           ui::WindowedAppContext& app_context);
 
@@ -278,7 +281,9 @@ class EmulatorWindow {
   bool initializing_shader_storage_ = false;
 
   std::unique_ptr<DisplayConfigDialog> display_config_dialog_;
+#if XE_PLATFORM_WINRT
   std::unique_ptr<EmulatorWindow::WinRTFrontendDialog> gamelist_;
+#endif
 
   std::vector<RecentTitleEntry> recently_launched_titles_;
 

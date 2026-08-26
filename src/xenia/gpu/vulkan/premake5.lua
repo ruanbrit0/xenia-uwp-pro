@@ -76,7 +76,7 @@ project("xenia-gpu-vulkan-trace-viewer")
       "X11-xcb",
     })
 
-  filter("platforms:Windows")
+  filter("platforms:Windows or Windows-UWP")
     -- Only create the .user file if it doesn't already exist.
     local user_file = project_root.."/build/xenia-gpu-vulkan-trace-viewer.vcxproj.user"
     if not os.isfile(user_file) then
@@ -140,7 +140,7 @@ project("xenia-gpu-vulkan-trace-dump")
       "X11-xcb",
     })
 
-  filter("platforms:Windows")
+  filter("platforms:Windows or Windows-UWP")
     -- Only create the .user file if it doesn't already exist.
     local user_file = project_root.."/build/xenia-gpu-vulkan-trace-dump.vcxproj.user"
     if not os.isfile(user_file) then

@@ -38,7 +38,9 @@
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/xam/xam_module.h"
-//#include "xenia/ui/file_picker.h"
+#if !XE_PLATFORM_WINRT
+#include "xenia/ui/file_picker.h"
+#endif
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -72,8 +74,8 @@ DECLARE_bool(d3d12_readback_resolve);
 DEFINE_bool(fullscreen, false, "Whether to launch the emulator in fullscreen.",
             "Display");
 
-DEFINE_bool(controller_hotkeys, false,
-        "Hotkeys for Xbox and PS controllers.", "General");
+DEFINE_bool(controller_hotkeys, false, "Hotkeys for Xbox and PS controllers.",
+            "General");
 
 DECLARE_bool(skip_frontend);
 
@@ -205,12 +207,14 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
 
   LoadRecentlyLaunchedTitles();
 
+#if XE_PLATFORM_WINRT
   if (cvars::skip_frontend) {
     UWP::SelectGameFromWinRT(emulator_);
   } else {
     gamelist_ = std::unique_ptr<WinRTFrontendDialog>(
         new WinRTFrontendDialog(imgui_drawer_.get(), *this));
   }
+#endif
 }
 
 std::unique_ptr<EmulatorWindow> EmulatorWindow::Create(
@@ -1787,6 +1791,7 @@ void EmulatorWindow::AddRecentlyLaunchedTitle(
   file.close();
 }
 
+#if XE_PLATFORM_WINRT
 void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   if (UWP::HasGamePath()) {
     UWP::SelectGameFromWinRT(emulator_window_.emulator());
@@ -1811,12 +1816,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   }
   ImGui::PopStyleVar(3);
   // -- Background
-  float display_scale = ((float) io.DisplaySize.x / 1920.0f);
+  float display_scale = ((float)io.DisplaySize.x / 1920.0f);
   ImGui::SetNextWindowSize(
-      ImVec2(539 * 1.8f * display_scale,
-          424 * 1.8f * display_scale));
-  ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x / 2 - ((540 * 1.8f * display_scale) / 2),
-                                 ImGui::GetIO().DisplaySize.y / 2 - ((425 * 1.8f * display_scale) / 2)));
+      ImVec2(539 * 1.8f * display_scale, 424 * 1.8f * display_scale));
+  ImGui::SetNextWindowPos(ImVec2(
+      ImGui::GetIO().DisplaySize.x / 2 - ((540 * 1.8f * display_scale) / 2),
+      ImGui::GetIO().DisplaySize.y / 2 - ((425 * 1.8f * display_scale) / 2)));
 
   auto flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoTitleBar |
                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
@@ -2452,7 +2457,8 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
       if (ImGui::BeginTabItem("About", nullptr)) {
         ImGui::TextWrapped(
-            "Xenia UWP 1.1.5a\nA fork of Xenia introducing Xbox support and a big "
+            "Xenia UWP 1.1.5a\nA fork of Xenia introducing Xbox support and a "
+            "big "
             "picture frontend.\n\n"
             "Xenia's Website: https://xenia.jp/\n"
             "Xenia's Patreon: https://www.patreon.com/xenia_project\n\n"
@@ -2505,6 +2511,7 @@ EmulatorWindow::WinRTFrontendDialog::GetOrCreateBackground() {
   background_tex_ = std::move(tex);
   return background_tex_;
 }
+#endif
 
 }  // namespace app
 }  // namespace xe
