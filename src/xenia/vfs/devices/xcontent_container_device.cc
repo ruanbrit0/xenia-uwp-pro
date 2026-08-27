@@ -133,7 +133,7 @@ void XContentContainerDevice::Dump(StringBuffer* string_buffer) {
 
 void XContentContainerDevice::CloseFiles() {
   for (auto& file : files_) {
-    fclose(file.second);
+    fclose(file.second.file);
   }
   files_.clear();
   files_total_size_ = 0;

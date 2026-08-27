@@ -8,6 +8,7 @@
  */
 
 #include <algorithm>
+#include <tuple>
 #include <vector>
 
 #include "xenia/base/logging.h"
@@ -46,12 +47,13 @@ XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles(
     XELOGW("STFS container is not a single file. Loading might fail!");
   }
 
-  files_.emplace(std::make_pair(0, header_file));
+  files_.emplace(std::piecewise_construct, std::forward_as_tuple(0),
+                 std::forward_as_tuple(header_file));
   return Result::kSuccess;
 }
 
 StfsContainerDevice::Result StfsContainerDevice::Read() {
-  auto& file = files_.at(0);
+  auto& file = files_.at(0).file;
 
   auto root_entry = new XContentContainerEntry(this, nullptr, "", &files_);
   root_entry->attributes_ = kFileAttributeDirectory;
@@ -246,7 +248,7 @@ void StfsContainerDevice::UpdateCachedHashTable(
   const size_t hash_offset = BlockToHashBlockOffset(block_index, hash_level);
   // Do nothing. It's already there.
   if (!cached_hash_tables_.count(hash_offset)) {
-    auto& file = files_.at(0);
+    auto& file = files_.at(0).file;
     xe::filesystem::Seek(file, hash_offset + secondary_table_offset, SEEK_SET);
     StfsHashTable table;
     if (fread(&table, sizeof(StfsHashTable), 1, file) != 1) {
@@ -276,7 +278,7 @@ void StfsContainerDevice::UpdateCachedHashTables(
 }
 
 const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
-  auto& file = files_.at(0);
+  auto& file = files_.at(0).file;
 
   const StfsVolumeDescriptor& descriptor =
       header_->content_metadata.volume_descriptor.stfs;

@@ -8,6 +8,7 @@
  */
 
 #include <algorithm>
+#include <tuple>
 #include <vector>
 
 #include "xenia/base/logging.h"
@@ -64,7 +65,8 @@ SvodContainerDevice::Result SvodContainerDevice::LoadHostFiles(
     xe::filesystem::Seek(file, 0L, SEEK_END);
     files_total_size_ += xe::filesystem::Tell(file);
     // no need to seek back, any reads from this file will seek first anyway
-    files_.emplace(std::make_pair(i, file));
+    files_.emplace(std::piecewise_construct, std::forward_as_tuple(i),
+                   std::forward_as_tuple(file));
   }
   XELOGI("SVOD successfully mapped {} files.", fragment_files.size());
   return Result::kSuccess;
@@ -74,7 +76,7 @@ XContentContainerDevice::Result SvodContainerDevice::Read() {
   // SVOD Systems can have different layouts. The root block is
   // denoted by the magic "MICROSOFT*XBOX*MEDIA" and is always in
   // the first "actual" data fragment of the system.
-  auto& svod_header = files_.at(0);
+  auto& svod_header = files_.at(0).file;
 
   size_t magic_offset;
   SetLayout(svod_header, magic_offset);
@@ -124,7 +126,7 @@ SvodContainerDevice::Result SvodContainerDevice::ReadEntry(
   entry_address += true_ordinal_offset;
 
   // Read directory entry
-  auto& file = files_.at(entry_file);
+  auto& file = files_.at(entry_file).file;
   xe::filesystem::Seek(file, entry_address, SEEK_SET);
 
 #pragma pack(push, 1)

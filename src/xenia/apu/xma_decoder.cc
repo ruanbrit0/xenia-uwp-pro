@@ -16,6 +16,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/ring_buffer.h"
 #include "xenia/base/string_buffer.h"
@@ -57,13 +58,31 @@ DEFINE_bool(ffmpeg_verbose, false, "Verbose FFmpeg output (debug and above)",
 DEFINE_bool(use_new_decoder, false,
             "Enables usage of new experimental XMA audio decoder.", "APU");
 
-DEFINE_bool(use_dedicated_xma_thread, true,
+#if XE_PLATFORM_WINRT
+constexpr bool kDefaultUseDedicatedXmaThread = false;
+#else
+constexpr bool kDefaultUseDedicatedXmaThread = true;
+#endif
+
+DEFINE_bool(use_dedicated_xma_thread, kDefaultUseDedicatedXmaThread,
             "Enables XMA decoding on separate thread. Disabled should produce "
             "better results, but decrease performance a bit.",
             "APU");
 
 namespace xe {
 namespace apu {
+
+namespace {
+
+bool UseDedicatedXmaThread() {
+#if XE_PLATFORM_WINRT
+  return false;
+#else
+  return cvars::use_dedicated_xma_thread;
+#endif
+}
+
+}  // namespace
 
 XmaDecoder::XmaDecoder(cpu::Processor* processor)
     : memory_(processor->memory()), processor_(processor) {}
@@ -160,7 +179,7 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
       kernel::object_ref<kernel::XHostThread>(new kernel::XHostThread(
           kernel_state, 128 * 1024, 0,
           [this]() {
-            if (cvars::use_dedicated_xma_thread) {
+            if (UseDedicatedXmaThread()) {
               WorkerThreadMain();
             }
             return 0;
@@ -328,7 +347,7 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
         uint32_t context_id = base_context_id + i;
         auto& context = *contexts_[context_id];
         context.Enable();
-        if (!cvars::use_dedicated_xma_thread) {
+        if (!UseDedicatedXmaThread()) {
           context.Work();
         }
       }

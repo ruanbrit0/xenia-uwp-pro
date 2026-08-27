@@ -230,8 +230,8 @@ int XmaContextOld::GetSampleRate(int id) {
     case 3:
       return 48000;
   }
-  assert_always();
-  return 0;
+  XELOGW("XmaContext: Invalid sample rate id {}, using 48000 Hz", id);
+  return 48000;
 }
 
 bool XmaContextOld::ValidFrameOffset(uint8_t* block, size_t size_bytes,
@@ -378,6 +378,18 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
   bool is_streaming = data->input_buffer_0_packet_count == 1 &&
                       data->input_buffer_1_packet_count == 1;
 
+  auto drop_current_buffer = [&]() {
+    data->parser_error_status = 4;
+    packets_skip_ = 0;
+    split_frame_len_ = 0;
+    split_frame_len_partial_ = 0;
+    split_frame_padding_start_ = 0;
+    if (av_context_ && avcodec_is_open(av_context_)) {
+      avcodec_flush_buffers(av_context_);
+    }
+    SwapInputBuffer(data);
+  };
+
   // Output buffers are in raw PCM samples, 256 bytes per block.
   // Output buffer is a ring buffer. We need to write from the write offset
   // to the read offset.
@@ -424,26 +436,32 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
     uint8_t* packet;
     bool frame_last_split;
 
-    BitStream stream(current_input_buffer, current_input_size * 8);
-    stream.SetOffset(data->input_buffer_read_offset);
-
-    if (data->input_buffer_read_offset > current_input_size * 8) {
+    if (data->input_buffer_read_offset >= current_input_size * 8) {
       XELOGE(
           "XmaContext {}: Error - Provided input offset exceed input buffer "
-          "size! ({} > {})",
+          "size! ({} >= {})",
           id(), data->input_buffer_read_offset, current_input_size * 8);
-      SwapInputBuffer(data);
+      drop_current_buffer();
       return;
     }
+
+    BitStream stream(current_input_buffer, current_input_size * 8);
+    stream.SetOffset(data->input_buffer_read_offset);
     // if we had a buffer swap try to skip packets first
     if (packets_skip_ > 0) {
       packet_idx =
           GetFramePacketNumber(current_input_buffer, current_input_size,
                                data->input_buffer_read_offset);
+      if (packet_idx < 0) {
+        XELOGW("XmaContext {}: Dropping buffer after invalid packet index",
+               id());
+        drop_current_buffer();
+        return;
+      }
       while (packets_skip_ > 0) {
         packets_skip_--;
         packet_idx++;
-        if (packet_idx > current_input_packet_count) {
+        if (packet_idx >= current_input_packet_count) {
           if (!reuse_input_buffer) {
             // Last packet. Try setup once more.
             reuse_input_buffer = TrySetupNextLoop(data, true);
@@ -468,6 +486,13 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
       packet_idx =
           GetFramePacketNumber(current_input_buffer, current_input_size,
                                data->input_buffer_read_offset);
+      if (packet_idx < 0) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after invalid split packet index",
+            id());
+        drop_current_buffer();
+        return;
+      }
       packet = current_input_buffer + packet_idx * kBytesPerPacket;
       std::tie(frame_count, frame_last_split) = GetPacketFrameCount(packet);
       frame_idx = -1;
@@ -494,12 +519,29 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
         //             split_frame_len_ - split_frame_len_partial_);
       }
 
+      if (split_frame_len_ < split_frame_len_partial_ ||
+          split_frame_len_ - split_frame_len_partial_ >
+              stream.BitsRemaining()) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after invalid split frame length "
+            "(len {}, partial {}, remaining {})",
+            id(), split_frame_len_, split_frame_len_partial_,
+            stream.BitsRemaining());
+        drop_current_buffer();
+        return;
+      }
+
       auto offset = stream.Copy(
           xma_frame_.data() + 1 +
               ((split_frame_len_partial_ + split_frame_padding_start_) / 8),
           split_frame_len_ - split_frame_len_partial_);
-      assert_true(offset ==
-                  (split_frame_padding_start_ + split_frame_len_partial_) % 8);
+      if (offset !=
+          (split_frame_padding_start_ + split_frame_len_partial_) % 8) {
+        XELOGW("XmaContext {}: Dropping buffer after invalid split frame copy",
+               id());
+        drop_current_buffer();
+        return;
+      }
     } else {
       if (data->input_buffer_read_offset % kBitsPerPacket == 0) {
         // Invalid offset. Go ahead and set it.
@@ -508,6 +550,9 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
                                  data->input_buffer_read_offset);
 
         if (packet_number == -1) {
+          XELOGW("XmaContext {}: Dropping buffer after invalid packet number",
+                 id());
+          drop_current_buffer();
           return;
         }
 
@@ -517,10 +562,9 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
             data->input_buffer_read_offset;
         if (offset == -1) {
           // No more frames.
-          SwapInputBuffer(data);
-          // TODO partial frames? end?
-          XELOGE("XmaContext {}: TODO partial frames? end?", id());
-          assert_always("TODO");
+          XELOGW("XmaContext {}: Dropping buffer after packet with no frames",
+                 id());
+          drop_current_buffer();
           return;
         } else {
           data->input_buffer_read_offset = offset;
@@ -531,7 +575,7 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
                             data->input_buffer_read_offset)) {
         XELOGAPU("XmaContext {}: Error - Invalid read offset {}!", id(),
                  data->input_buffer_read_offset);
-        SwapInputBuffer(data);
+        drop_current_buffer();
         return;
       }
 
@@ -539,15 +583,31 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
       std::tie(packet_idx, frame_idx) =
           GetFrameNumber(current_input_buffer, current_input_size,
                          data->input_buffer_read_offset);
-      // TODO handle
-      assert_true(packet_idx >= 0);
-      assert_true(frame_idx >= 0);
+      if (packet_idx < 0 || frame_idx < 0) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after invalid frame position "
+            "(packet {}, frame {})",
+            id(), packet_idx, frame_idx);
+        drop_current_buffer();
+        return;
+      }
       packet = current_input_buffer + packet_idx * kBytesPerPacket;
       // frames that belong to this packet
       std::tie(frame_count, frame_last_split) = GetPacketFrameCount(packet);
-      assert_true(frame_count >= 0);  // TODO end
+      if (frame_count <= 0) {
+        XELOGW("XmaContext {}: Dropping buffer after packet without frames",
+               id());
+        drop_current_buffer();
+        return;
+      }
 
-      PrepareDecoder(packet, data->sample_rate, bool(data->is_stereo));
+      if (PrepareDecoder(packet, data->sample_rate, bool(data->is_stereo)) <
+          0) {
+        XELOGW("XmaContext {}: Dropping buffer after decoder setup failed",
+               id());
+        drop_current_buffer();
+        return;
+      }
 
       // Current frame is split to next packet:
       bool frame_is_split = frame_last_split && (frame_idx >= frame_count - 1);
@@ -564,8 +624,14 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
         // assert_always();
         split_frame_len_ = xma::kMaxFrameLength + 1;
       }
-      assert_true(frame_is_split ==
-                  (split_frame_len_ > split_frame_len_partial_));
+      if (frame_is_split != (split_frame_len_ > split_frame_len_partial_)) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after inconsistent split frame "
+            "state",
+            id());
+        drop_current_buffer();
+        return;
+      }
 
       // TODO fix bitstream copy
       std::memset(xma_frame_.data(), 0, xma_frame_.size());
@@ -580,11 +646,16 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
               "split_frame_len: {}, split_partial: {}, offset_bits: {}",
               id(), split_frame_len_, split_frame_len_partial_,
               stream.offset_bits());
-          SwapInputBuffer(data);
+          drop_current_buffer();
           return;
         }
         auto offset = stream.Copy(xma_frame_.data() + 1, bits_to_copy);
-        assert_true(offset < 8);
+        if (offset >= 8) {
+          XELOGW("XmaContext {}: Dropping buffer after invalid copy padding",
+                 id());
+          drop_current_buffer();
+          return;
+        }
         split_frame_padding_start_ = static_cast<uint8_t>(offset);
       }
 
@@ -623,7 +694,12 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
 
     auto padding_end = av_packet_->size * 8 -
                        (8 + split_frame_padding_start_ + split_frame_len_);
-    assert_true(padding_end < 8);
+    if (padding_end >= 8) {
+      XELOGW("XmaContext {}: Dropping buffer after invalid frame padding",
+             id());
+      drop_current_buffer();
+      return;
+    }
     xma_frame_[0] =
         ((split_frame_padding_start_ & 7) << 5) | ((padding_end & 7) << 2);
 
@@ -668,7 +744,12 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
 
       // assert(decoded_consumed_samples_ + kSamplesPerFrame <=
       //       current_frame_.size());
-      assert_true(av_context_->sample_fmt == AV_SAMPLE_FMT_FLTP);
+      if (av_context_->sample_fmt != AV_SAMPLE_FMT_FLTP) {
+        XELOGW("XmaContext {}: Dropping buffer after unexpected sample format",
+               id());
+        drop_current_buffer();
+        return;
+      }
       // assert_true(frame_is_split == (frame_idx == -1));
 
       //			dump_raw(av_frame_, id());
@@ -677,7 +758,14 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
       // decoded_consumed_samples_ += kSamplesPerFrame;
 
       auto byte_count = kBytesPerFrameChannel << data->is_stereo;
-      assert_true(output_remaining_bytes >= byte_count);
+      if (output_remaining_bytes < byte_count) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after output ring underflow "
+            "({} < {})",
+            id(), output_remaining_bytes, byte_count);
+        drop_current_buffer();
+        return;
+      }
       output_rb.Write(raw_frame_.data(), byte_count);
       output_remaining_bytes -= byte_count;
       data->output_buffer_write_offset = output_rb.write_offset() / 256;
@@ -748,8 +836,16 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
         offset =
             xma::GetPacketFrameOffset(packet) + packet_idx * kBitsPerPacket;
       }
-      // TODO buffer bounds check
-      assert_true(data->input_buffer_read_offset < offset);
+      if (offset <= data->input_buffer_read_offset ||
+          offset > current_input_size * 8) {
+        XELOGW(
+            "XmaContext {}: Dropping buffer after invalid next offset {} "
+            "(current {}, size {})",
+            id(), offset, data->input_buffer_read_offset,
+            current_input_size * 8);
+        drop_current_buffer();
+        return;
+      }
       data->input_buffer_read_offset = offset;
     }
   }
@@ -789,6 +885,9 @@ size_t XmaContextOld::GetNextFrame(uint8_t* block, size_t size,
   // auto next_packet = bit_offset - bit_offset % kBitsPerPacket +
   // kBitsPerPacket;
   auto packet_idx = GetFramePacketNumber(block, size, bit_offset);
+  if (packet_idx < 0) {
+    return 0;
+  }
 
   BitStream stream(block, size * 8);
   stream.SetOffset(bit_offset);
@@ -805,11 +904,7 @@ size_t XmaContextOld::GetNextFrame(uint8_t* block, size_t size,
     // return next_packet;
     return 0;
   } else if (len >= xma::kMaxFrameLength) {
-    assert_always("TODO");
-    // *bit_offset = next_packet;
-    // return false;
     return 0;
-    // return next_packet;
   }
 
   stream.Advance(len - (15 + 1));
@@ -829,8 +924,6 @@ int XmaContextOld::GetFramePacketNumber(uint8_t* block, size_t size,
                                         size_t bit_offset) {
   size *= 8;
   if (bit_offset >= size) {
-    // Not good :(
-    assert_always();
     return -1;
   }
 
@@ -845,7 +938,6 @@ std::tuple<int, int> XmaContextOld::GetFrameNumber(uint8_t* block, size_t size,
   auto packet_idx = GetFramePacketNumber(block, size, bit_offset);
 
   if (packet_idx < 0 || (packet_idx + 1) * kBytesPerPacket > size) {
-    assert_always();
     return {packet_idx, -2};
   }
 
@@ -855,6 +947,10 @@ std::tuple<int, int> XmaContextOld::GetFrameNumber(uint8_t* block, size_t size,
 
   uint8_t* packet = block + (packet_idx * kBytesPerPacket);
   auto first_frame_offset = xma::GetPacketFrameOffset(packet);
+  if (packet_idx * kBitsPerPacket + first_frame_offset > size * 8) {
+    return {packet_idx, -2};
+  }
+
   BitStream stream(block, size * 8);
   stream.SetOffset(packet_idx * kBitsPerPacket + first_frame_offset);
 
@@ -909,7 +1005,6 @@ std::tuple<int, bool> XmaContextOld::GetPacketFrameCount(uint8_t* packet) {
     if ((size - 15) > stream.BitsRemaining()) {
       return {frame_count, true};
     } else if (size == 0x7FFF) {
-      assert_always();
       return {frame_count, true};
     }
 
@@ -930,7 +1025,10 @@ std::tuple<int, bool> XmaContextOld::GetPacketFrameCount(uint8_t* packet) {
 int XmaContextOld::PrepareDecoder(uint8_t* packet, int sample_rate,
                                   bool is_two_channel) {
   // Sanity check: Packet metadata is always 1 for XMA2/0 for XMA
-  assert_true((packet[2] & 0x7) == 1 || (packet[2] & 0x7) == 0);
+  if ((packet[2] & 0x7) != 1 && (packet[2] & 0x7) != 0) {
+    XELOGW("XmaContext {}: Invalid packet metadata {}", id(), packet[2] & 0x7);
+    return -1;
+  }
 
   sample_rate = GetSampleRate(sample_rate);
 

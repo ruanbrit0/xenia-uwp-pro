@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 
 #include "xenia/base/math.h"
 #include "xenia/vfs/devices/xcontent_container_entry.h"
@@ -51,9 +52,11 @@ X_STATUS XContentContainerFile::ReadSync(void* buffer, size_t buffer_length,
     size_t read_length =
         std::min(record.length - read_offset, remaining_length);
 
-    auto& file = entry_->files()->at(record.file);
-    xe::filesystem::Seek(file, record.offset + read_offset, SEEK_SET);
-    auto num_read = fread(p, 1, read_length, file);
+    auto& file_handle = entry_->files()->at(record.file);
+    std::lock_guard<std::mutex> lock(file_handle.mutex);
+    xe::filesystem::Seek(file_handle.file, record.offset + read_offset,
+                         SEEK_SET);
+    auto num_read = fread(p, 1, read_length, file_handle.file);
 
     *out_bytes_read += num_read;
     p += num_read;

@@ -10,7 +10,9 @@
 #ifndef XENIA_VFS_DEVICES_XCONTENT_CONTAINER_ENTRY_H_
 #define XENIA_VFS_DEVICES_XCONTENT_CONTAINER_ENTRY_H_
 
+#include <cstdio>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -19,7 +21,14 @@
 
 namespace xe {
 namespace vfs {
-typedef std::map<size_t, FILE*> MultiFileHandles;
+struct MultiFileHandle {
+  explicit MultiFileHandle(FILE* file) : file(file) {}
+
+  FILE* file;
+  std::mutex mutex;
+};
+
+typedef std::map<size_t, MultiFileHandle> MultiFileHandles;
 
 class XContentContainerDevice;
 

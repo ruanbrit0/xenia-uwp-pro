@@ -19,6 +19,7 @@
 #include "xenia/kernel/xam/content_manager.h"
 #include "xenia/vfs/device.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
+#include "xenia/vfs/devices/xcontent_container_entry.h"
 
 namespace xe {
 namespace vfs {
@@ -80,7 +81,7 @@ class XContentContainerDevice : public Device {
   // multiple file.
   virtual Result LoadHostFiles(FILE* header_file) = 0;
   // Initialize any container specific fields.
-  virtual void SetupContainer(){};
+  virtual void SetupContainer() {};
 
   Entry* ResolvePath(const std::string_view path);
   void CloseFiles();
@@ -102,7 +103,7 @@ class XContentContainerDevice : public Device {
   std::string name_;
   std::filesystem::path host_path_;
 
-  std::map<size_t, FILE*> files_;
+  MultiFileHandles files_;
   size_t files_total_size_;
   std::unique_ptr<Entry> root_entry_;
   std::unique_ptr<XContentContainerHeader> header_;
