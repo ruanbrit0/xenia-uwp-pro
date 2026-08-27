@@ -43,7 +43,7 @@ void NullDevice::Dump(StringBuffer* string_buffer) {
 }
 
 Entry* NullDevice::ResolvePath(const std::string_view path) {
-  XELOGFS("NullDevice::ResolvePath({})", path);
+  XELOGI("NullDevice::ResolvePath mount='{}', path='{}'", mount_path_, path);
 
   auto root = root_entry_.get();
   if (path.empty()) {
@@ -52,10 +52,13 @@ Entry* NullDevice::ResolvePath(const std::string_view path) {
 
   for (auto& child : root->children()) {
     if (!xe_strcasecmp(child->path().c_str(), path.data())) {
+      XELOGI("NullDevice::ResolvePath hit '{}'", child->absolute_path());
       return child.get();
     }
   }
 
+  XELOGW("NullDevice::ResolvePath miss mount='{}', path='{}'", mount_path_,
+         path);
   return nullptr;
 }
 

@@ -250,43 +250,62 @@ void Processor::RemoveFunctionByAddress(uint32_t address) {
 }
 
 Function* Processor::ResolveFunction(uint32_t address) {
+  XELOGD("Processor::ResolveFunction begin: {:08X}", address);
   Entry* entry;
   Entry::Status status = entry_table_.GetOrCreate(address, &entry);
+  XELOGD("Processor::ResolveFunction entry status: {:08X}, status={}",
+         address, static_cast<int>(status));
   if (status == Entry::STATUS_NEW) {
     // Needs to be generated. We have the 'lock' on it and must do so now.
 
     // Grab symbol declaration.
+    XELOGD("Processor::ResolveFunction lookup begin: {:08X}", address);
     auto function = LookupFunction(address);
 
     if (!function) {
+      XELOGE("Processor::ResolveFunction lookup failed: {:08X}", address);
       entry->status = Entry::STATUS_FAILED;
       return nullptr;
     }
+    XELOGD("Processor::ResolveFunction lookup result: {:08X}, function='{}'",
+           address, function->name());
 
+    XELOGD("Processor::ResolveFunction demand begin: {:08X}", address);
     if (!DemandFunction(function)) {
+      XELOGE("Processor::ResolveFunction demand failed: {:08X}", address);
       entry->status = Entry::STATUS_FAILED;
       return nullptr;
     }
+    XELOGD("Processor::ResolveFunction demand result: {:08X}-{:08X}",
+           function->address(), function->end_address());
     // only add it to the list of resolved functions if resolving succeeded
     auto module_for = function->module();
 
     auto xexmod = dynamic_cast<XexModule*>(module_for);
     if (xexmod) {
+      XELOGD("Processor::ResolveFunction infocache begin: {:08X}", address);
       auto addr_flags = xexmod->GetInstructionAddressFlags(address);
       if (addr_flags) {
         addr_flags->was_resolved = 1;
       }
+      XELOGD("Processor::ResolveFunction infocache result: {:08X}, hit={}",
+             address, !!addr_flags);
     }
 
     entry->function = function;
     entry->end_address = function->end_address();
     status = entry->status = Entry::STATUS_READY;
+    XELOGD("Processor::ResolveFunction entry ready: {:08X}-{:08X}",
+           entry->address, entry->end_address);
   }
   if (status == Entry::STATUS_READY) {
     // Ready to use.
+    XELOGD("Processor::ResolveFunction result: {:08X}, ready=true", address);
     return entry->function;
   } else {
     // Failed or bad state.
+    XELOGE("Processor::ResolveFunction result: {:08X}, status={}", address,
+           static_cast<int>(status));
     return nullptr;
   }
 }
@@ -365,12 +384,17 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
   SCOPE_profile_cpu_f("cpu");
 
   // Attempt to get the function.
+  XELOGI("Processor::Execute resolve begin: thread={}, address={:08X}",
+         thread_state ? thread_state->thread_id() : 0, address);
   auto function = ResolveFunction(address);
   if (!function) {
     // Symbol not found in any module.
     XELOGCPU("Execute({:08X}): failed to find function", address);
+    XELOGE("Processor::Execute resolve failed: address={:08X}", address);
     return false;
   }
+  XELOGI("Processor::Execute resolve result: address={:08X}, function='{}'",
+         address, function->name());
 
   auto context = thread_state->context();
 
@@ -384,7 +408,16 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
   context->lr = 0xBCBCBCBC;
 
   // Execute the function.
+  XELOGI(
+      "Processor::Execute call begin: thread={}, address={:08X}, stack={:08X}, "
+      "lr={:08X}",
+      thread_state->thread_id(), address, static_cast<uint32_t>(context->r[1]),
+      static_cast<uint32_t>(context->lr));
   auto result = function->Call(thread_state, uint32_t(context->lr));
+  XELOGI(
+      "Processor::Execute call result: thread={}, address={:08X}, result={}, "
+      "r3={:016X}",
+      thread_state->thread_id(), address, result, context->r[3]);
 
   context->lr = previous_lr;
   context->r[1] += 64 + 112;

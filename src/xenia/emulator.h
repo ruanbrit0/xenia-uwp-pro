@@ -181,7 +181,7 @@ class Emulator {
   // Terminates the currently running title.
   X_STATUS TerminateTitle();
 
-  const std::unique_ptr<vfs::Device> CreateVfsDevice(
+  std::unique_ptr<vfs::Device> CreateVfsDevice(
       const std::filesystem::path& path, const std::string_view mount_path);
 
   X_STATUS MountPath(const std::filesystem::path& path,
@@ -303,7 +303,6 @@ class Emulator {
 
 // Determine the executable signature
 Emulator::FileSignatureType GetFileSignature(const std::filesystem::path& path);
-
 
 }  // namespace xe
 

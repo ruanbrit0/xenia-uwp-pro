@@ -20,7 +20,14 @@ bool IsDebuggerAttached() {
       __readgsqword(0x60))[2];  // get BeingDebugged field of PEB
 }
 
-void Break() { __debugbreak(); }
+void Break() {
+#if XE_PLATFORM_WINRT
+  if (!IsDebuggerAttached()) {
+    return;
+  }
+#endif
+  __debugbreak();
+}
 
 namespace internal {
 void DebugPrint(const char* s) { OutputDebugStringA(s); }

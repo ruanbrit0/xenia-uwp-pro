@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -208,9 +209,13 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
   LoadRecentlyLaunchedTitles();
 
 #if XE_PLATFORM_WINRT
+  XELOGI("UWP EmulatorWindow constructor: skip_frontend={}, has_game_path={}",
+         cvars::skip_frontend, UWP::HasGamePath());
   if (cvars::skip_frontend) {
+    XELOGI("UWP EmulatorWindow constructor launching via SelectGameFromWinRT");
     UWP::SelectGameFromWinRT(emulator_);
   } else {
+    XELOGI("UWP EmulatorWindow constructor creating frontend dialog");
     gamelist_ = std::unique_ptr<WinRTFrontendDialog>(
         new WinRTFrontendDialog(imgui_drawer_.get(), *this));
   }
@@ -1615,7 +1620,14 @@ std::string EmulatorWindow::CanonicalizeFileExtension(
 }
 
 xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
-  bool titleExists = !std::filesystem::exists(path_to_file);
+  XELOGI("RunTitle begin: path='{}'", xe::path_to_utf8(path_to_file));
+
+  std::error_code exists_ec;
+  bool titleExists = !std::filesystem::exists(path_to_file, exists_ec);
+  if (exists_ec) {
+    XELOGE("RunTitle exists check failed: path='{}', error={}",
+           xe::path_to_utf8(path_to_file), exists_ec.message());
+  }
 
   if (path_to_file.empty() || titleExists) {
     char* log_msg = path_to_file.empty()
@@ -1638,12 +1650,21 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
     //   return RunTitle(path);
     // }
 
+    XELOGE("RunTitle rejected because a title is already open");
     return X_STATUS_UNSUCCESSFUL;
   }
 
   // Prevent crashing the emulator by not loading a game if a game is already
   // loaded.
-  auto abs_path = std::filesystem::absolute(path_to_file);
+  std::filesystem::path abs_path;
+  try {
+    abs_path = std::filesystem::absolute(path_to_file);
+    XELOGI("RunTitle absolute path: '{}'", xe::path_to_utf8(abs_path));
+  } catch (const std::exception& e) {
+    XELOGE("RunTitle absolute path failed: path='{}', exception='{}'",
+           xe::path_to_utf8(path_to_file), e.what());
+    return X_STATUS_UNSUCCESSFUL;
+  }
 
   auto extension = CanonicalizeFileExtension(abs_path);
 
@@ -1658,7 +1679,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
     return X_STATUS_UNSUCCESSFUL;
   }
 
+  XELOGI("RunTitle LaunchPath begin: '{}'", xe::path_to_utf8(abs_path));
   auto result = emulator_->LaunchPath(abs_path);
+  XELOGI("RunTitle LaunchPath result: {:08X}", result);
 
   imgui_drawer_.get()->ClearDialogs();
 
@@ -1683,7 +1706,11 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
 
 void EmulatorWindow::RunPreviouslyPlayedTitle() {
   if (recently_launched_titles_.size() >= 1) {
+    XELOGI("RunPreviouslyPlayedTitle launching: '{}'",
+           xe::path_to_utf8(recently_launched_titles_[0].path_to_file));
     RunTitle(recently_launched_titles_[0].path_to_file);
+  } else {
+    XELOGI("RunPreviouslyPlayedTitle skipped: no recent titles");
   }
 }
 
@@ -1793,9 +1820,13 @@ void EmulatorWindow::AddRecentlyLaunchedTitle(
 
 #if XE_PLATFORM_WINRT
 void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
+  std::optional<std::filesystem::path> title_to_launch;
+
   if (UWP::HasGamePath()) {
-    UWP::SelectGameFromWinRT(emulator_window_.emulator());
-    Close();
+    XELOGI("UWP frontend detected pending game path");
+    title_to_launch = UWP::ConsumeGamePath();
+    XELOGI("UWP frontend consumed game path: '{}'",
+           xe::path_to_utf8(*title_to_launch));
   }
 
   // Draw Background first
@@ -1841,14 +1872,13 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
             ImGui::PushID(path.c_str());
             if (ImGui::Selectable(filename.c_str())) {
-              emulator_window_.emulator_->LaunchPath(path);
-
-              ImGui::End();
-              Close();
-
-              return;
+              title_to_launch = path;
             }
             ImGui::PopID();
+
+            if (title_to_launch) {
+              break;
+            }
           }
 
           ImGui::EndListBox();
@@ -2477,6 +2507,28 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
     ImGui::End();
   }
   ImGui::PopStyleColor();
+
+  if (title_to_launch) {
+    XELOGI("UWP frontend launching title: {}",
+           xe::path_to_utf8(*title_to_launch));
+    try {
+      auto result = emulator_window_.RunTitle(*title_to_launch);
+      XELOGI("UWP frontend launch result: {:08X}", result);
+      // RunTitle owns dialog cleanup and failure reporting.
+    } catch (const std::exception& e) {
+      XELOGE("UWP frontend launch failed with exception: {}", e.what());
+      xe::ui::ImGuiDialog::ShowMessageBox(
+          imgui_drawer(), "Title Launch Failed!",
+          "Failed to launch title due to an internal error.\n\n"
+          "Check xenia.log for technical details.");
+    } catch (...) {
+      XELOGE("UWP frontend launch failed with unknown exception");
+      xe::ui::ImGuiDialog::ShowMessageBox(
+          imgui_drawer(), "Title Launch Failed!",
+          "Failed to launch title due to an unknown internal error.\n\n"
+          "Check xenia.log for technical details.");
+    }
+  }
 }
 
 std::shared_ptr<ui::ImmediateTexture>

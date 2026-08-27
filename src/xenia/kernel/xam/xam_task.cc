@@ -66,9 +66,20 @@ dword_result_t XamTaskSchedule_entry(lpvoid_t callback,
   // Stack must be aligned to 16kb pages
   stack_size = std::max((uint32_t)0x4000, ((stack_size + 0xFFF) & 0xFFFFF000));
 
+  uint32_t task_process = kernel_state()->GetSystemProcess();
+  auto executable_module = kernel_state()->GetExecutableModule();
+  if (executable_module && executable_module->xex_module()->ContainsAddress(
+                               callback.guest_address())) {
+    task_process = kernel_state()->GetTitleProcess();
+  }
+  XELOGI("XamTaskSchedule process: callback={:08X}, process={:08X}, "
+         "title_code={}",
+         callback.guest_address(), task_process,
+         task_process == kernel_state()->GetTitleProcess());
+
   auto thread = object_ref<XThread>(new XThread(
       kernel_state(), stack_size, 0, callback, message.guest_address(), 0, true,
-      false, kernel_state()->GetSystemProcess()));
+      false, task_process));
 
   X_STATUS result = thread->Create();
 
@@ -87,6 +98,11 @@ DECLARE_XAM_EXPORT2(XamTaskSchedule, kNone, kImplemented, kSketchy);
 
 dword_result_t XamTaskShouldExit_entry(dword_t r3) { return 0; }
 DECLARE_XAM_EXPORT2(XamTaskShouldExit, kNone, kStub, kSketchy);
+
+dword_result_t XamTaskCloseHandle_entry(dword_t handle) {
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT2(XamTaskCloseHandle, kNone, kStub, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

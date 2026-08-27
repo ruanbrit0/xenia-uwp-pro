@@ -696,6 +696,11 @@ dword_result_t XeKeysGetConsoleType_entry(lpdword_t type_out) {
 
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetConsoleType, kNone, kImplemented);
 
+dword_result_t XeKeysConsolePrivateKeySign_entry(const ppc_context_t& ctx) {
+  return X_STATUS_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysConsolePrivateKeySign, kNone, kStub);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

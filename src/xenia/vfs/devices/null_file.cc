@@ -9,6 +9,8 @@
 
 #include "xenia/vfs/devices/null_file.h"
 
+#include <cstring>
+
 #include "xenia/vfs/devices/null_entry.h"
 
 namespace xe {
@@ -27,6 +29,13 @@ X_STATUS NullFile::ReadSync(void* buffer, size_t buffer_length,
     return X_STATUS_ACCESS_DENIED;
   }
 
+  if (buffer_length) {
+    std::memset(buffer, 0, buffer_length);
+  }
+  if (out_bytes_read) {
+    *out_bytes_read = buffer_length;
+  }
+
   return X_STATUS_SUCCESS;
 }
 
@@ -35,6 +44,10 @@ X_STATUS NullFile::WriteSync(const void* buffer, size_t buffer_length,
   if (!(file_access_ &
         (FileAccess::kFileWriteData | FileAccess::kFileAppendData))) {
     return X_STATUS_ACCESS_DENIED;
+  }
+
+  if (out_bytes_written) {
+    *out_bytes_written = buffer_length;
   }
 
   return X_STATUS_SUCCESS;

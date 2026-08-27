@@ -32,6 +32,46 @@ dword_result_t HidReadKeys_entry(dword_t unk1, unknown_t unk2, unknown_t unk3) {
 }
 DECLARE_XBOXKRNL_EXPORT1(HidReadKeys, kInput, kStub);
 
+dword_result_t XInputdFFGetDeviceInfo_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFGetDeviceInfo, kInput, kStub);
+
+dword_result_t XInputdFFSetEffect_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFSetEffect, kInput, kStub);
+
+dword_result_t XInputdFFUpdateEffect_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFUpdateEffect, kInput, kStub);
+
+dword_result_t XInputdFFEffectOperation_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFEffectOperation, kInput, kStub);
+
+dword_result_t XInputdFFDeviceControl_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFDeviceControl, kInput, kStub);
+
+dword_result_t XInputdFFSetDeviceGain_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFSetDeviceGain, kInput, kStub);
+
+dword_result_t XInputdFFCancelIo_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFCancelIo, kInput, kStub);
+
+dword_result_t XInputdFFSetRumble_entry(const ppc_context_t& ctx) {
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XBOXKRNL_EXPORT1(XInputdFFSetRumble, kInput, kStub);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

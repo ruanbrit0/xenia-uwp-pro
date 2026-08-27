@@ -10,6 +10,7 @@
 #include "xenia/kernel/xthread.h"
 
 #include <cstring>
+#include <exception>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
@@ -17,6 +18,10 @@
 #include "xenia/base/literals.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
+#if XE_PLATFORM_WINRT
+#include "xenia/base/platform_win.h"
+#endif
 #include "xenia/base/profiling.h"
 #include "xenia/base/threading.h"
 #include "xenia/cpu/breakpoint.h"
@@ -41,6 +46,40 @@ DEFINE_int64(main_xthread_stack_size_multiplier_hack, 1,
 #endif
 namespace xe {
 namespace kernel {
+
+#if XE_PLATFORM_WINRT
+uint64_t ExecuteProcessorWithSehGuard(KernelState* kernel_state,
+                                      cpu::ThreadState* thread_state,
+                                      uint32_t address, uint64_t* args,
+                                      size_t arg_count,
+                                      uint32_t thread_handle) {
+  uint64_t result = 0xDEADBABE;
+  __try {
+    result = kernel_state->processor()->Execute(thread_state, address, args,
+                                                arg_count);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+    XELOGE(
+        "XThread native exception: handle={:08X}, address={:08X}",
+        thread_handle, address);
+  }
+  return result;
+}
+
+bool ExecuteRawProcessorWithSehGuard(KernelState* kernel_state,
+                                     cpu::ThreadState* thread_state,
+                                     uint32_t address,
+                                     uint32_t thread_handle) {
+  bool result = false;
+  __try {
+    result = kernel_state->processor()->ExecuteRaw(thread_state, address);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+    XELOGE(
+        "XThread native raw exception: handle={:08X}, address={:08X}",
+        thread_handle, address);
+  }
+  return result;
+}
+#endif
 
 const uint32_t XAPC::kSize;
 const uint32_t XAPC::kDummyKernelRoutine;
@@ -532,20 +571,62 @@ void XThread::Execute() {
   XELOGKERNEL("XThread::Execute thid {} (handle={:08X}, '{}', native={:08X})",
               thread_id_, handle(), thread_name_, thread_->system_id());
   // Let the kernel know we are starting.
-  kernel_state()->OnThreadExecute(this);
+  try {
+    XELOGI("XThread OnThreadExecute begin: handle={:08X}", handle());
+    kernel_state()->OnThreadExecute(this);
+    XELOGI("XThread OnThreadExecute end: handle={:08X}", handle());
+  } catch (const std::exception& ex) {
+    XELOGE("XThread OnThreadExecute exception: handle={:08X}, what='{}'",
+           handle(), ex.what());
+    Exit(-1);
+    return;
+  } catch (...) {
+    XELOGE("XThread OnThreadExecute unknown exception: handle={:08X}",
+           handle());
+    Exit(-1);
+    return;
+  }
 
   // All threads get a mandatory sleep. This is to deal with some buggy
   // games that are assuming the 360 is so slow to create threads that they
   // have time to initialize shared structures AFTER CreateThread (RR).
-  xe::threading::Sleep(std::chrono::milliseconds(10));
+  if ((creation_params_.creation_flags & X_CREATE_SYSTEM_THREAD) &&
+      !creation_params_.guest_process) {
+    XELOGI("XThread startup sleep skipped: handle={:08X}, flags={:08X}",
+           handle(), creation_params_.creation_flags);
+  } else {
+    XELOGI("XThread startup sleep begin: handle={:08X}", handle());
+    xe::threading::Sleep(std::chrono::milliseconds(10));
+    XELOGI("XThread startup sleep end: handle={:08X}", handle());
+  }
 
   // Dispatch any APCs that were queued before the thread was created first.
-  DeliverAPCs();
+  try {
+    XELOGI("XThread DeliverAPCs begin: handle={:08X}", handle());
+    DeliverAPCs();
+    XELOGI("XThread DeliverAPCs end: handle={:08X}", handle());
+  } catch (const std::exception& ex) {
+    XELOGE("XThread DeliverAPCs exception: handle={:08X}, what='{}'", handle(),
+           ex.what());
+    Exit(-1);
+    return;
+  } catch (...) {
+    XELOGE("XThread DeliverAPCs unknown exception: handle={:08X}", handle());
+    Exit(-1);
+    return;
+  }
 
   uint32_t address;
   std::vector<uint64_t> args;
   bool want_exit_code;
   int exit_code = 0;
+
+  XELOGI(
+      "XThread preparing call: handle={:08X}, startup={:08X}, "
+      "start={:08X}, context={:08X}, flags={:08X}",
+      handle(), creation_params_.xapi_thread_startup,
+      creation_params_.start_address, creation_params_.start_context,
+      creation_params_.creation_flags);
 
   // If a XapiThreadStartup value is present, we use that as a trampoline.
   // Otherwise, we are a raw thread.
@@ -560,26 +641,68 @@ void XThread::Execute() {
     args.push_back(creation_params_.start_context);
     want_exit_code = true;
   }
+  XELOGI("XThread prepared call: handle={:08X}, address={:08X}, args={}",
+         handle(), address, args.size());
 
   uint32_t next_address;
   try {
+    XELOGI("XThread execute begin: handle={:08X}, address={:08X}", handle(),
+           address);
+#if XE_PLATFORM_WINRT
+    exit_code = static_cast<int>(ExecuteProcessorWithSehGuard(
+        kernel_state(), thread_state_, address, args.data(), args.size(),
+        handle()));
+#else
     exit_code = static_cast<int>(kernel_state()->processor()->Execute(
         thread_state_, address, args.data(), args.size()));
+#endif
+    XELOGI("XThread execute returned: handle={:08X}, exit_code={:08X}",
+           handle(), static_cast<uint32_t>(exit_code));
     next_address = 0;
   } catch (const reenter_exception& ree) {
+    XELOGI("XThread reenter requested: handle={:08X}, address={:08X}",
+           handle(), ree.address());
     next_address = ree.address();
+  } catch (const std::exception& ex) {
+    XELOGE("XThread execute exception: handle={:08X}, what='{}'", handle(),
+           ex.what());
+    Exit(-1);
+    return;
+  } catch (...) {
+    XELOGE("XThread execute unknown exception: handle={:08X}", handle());
+    Exit(-1);
+    return;
   }
 
   // See XThread::Reenter comments.
   while (next_address != 0) {
     try {
+      XELOGI("XThread execute raw begin: handle={:08X}, address={:08X}",
+             handle(), next_address);
+#if XE_PLATFORM_WINRT
+      ExecuteRawProcessorWithSehGuard(kernel_state(), thread_state_,
+                                      next_address, handle());
+#else
       kernel_state()->processor()->ExecuteRaw(thread_state_, next_address);
+#endif
+      XELOGI("XThread execute raw returned: handle={:08X}", handle());
       next_address = 0;
       if (want_exit_code) {
         exit_code = static_cast<int>(thread_state_->context()->r[3]);
       }
     } catch (const reenter_exception& ree) {
+      XELOGI("XThread raw reenter requested: handle={:08X}, address={:08X}",
+             handle(), ree.address());
       next_address = ree.address();
+    } catch (const std::exception& ex) {
+      XELOGE("XThread execute raw exception: handle={:08X}, what='{}'",
+             handle(), ex.what());
+      Exit(-1);
+      return;
+    } catch (...) {
+      XELOGE("XThread execute raw unknown exception: handle={:08X}", handle());
+      Exit(-1);
+      return;
     }
   }
 

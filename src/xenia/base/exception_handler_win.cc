@@ -10,7 +10,9 @@
 #include "xenia/base/exception_handler.h"
 
 #include "xenia/base/assert.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/platform_win.h"
 
 namespace xe {
@@ -72,6 +74,11 @@ LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
     } break;
     default:
       // Unknown/unhandled type.
+#if XE_PLATFORM_WINRT
+      XELOGE("Unhandled Windows exception: code={:08X}, rip={:016X}",
+             static_cast<uint32_t>(ex_info->ExceptionRecord->ExceptionCode),
+             static_cast<uint64_t>(ex_info->ContextRecord->Rip));
+#endif
       return EXCEPTION_CONTINUE_SEARCH;
   }
 

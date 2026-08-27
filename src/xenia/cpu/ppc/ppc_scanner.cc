@@ -18,6 +18,7 @@
 #include "xenia/cpu/ppc/ppc_decode_data.h"
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
+#include "xenia/cpu/module.h"
 #include "xenia/cpu/processor.h"
 
 #if 0
@@ -59,12 +60,31 @@ bool PPCScanner::Scan(GuestFunction* function, FunctionDebugInfo* debug_info) {
 
   uint32_t start_address = static_cast<uint32_t>(function->address());
   uint32_t end_address = static_cast<uint32_t>(function->end_address());
+  constexpr uint32_t kMaxScannedInstructionsWithoutKnownEnd = 64 * 1024;
+  uint32_t scan_limit = end_address;
+  if (!scan_limit) {
+    scan_limit = start_address +
+                 (kMaxScannedInstructionsWithoutKnownEnd - 1) * 4;
+    if (scan_limit < start_address) {
+      scan_limit = 0xFFFFFFFCu;
+    }
+  }
   uint32_t address = start_address;
   uint32_t furthest_target = start_address;
   size_t blocks_found = 0;
   bool in_block = false;
   bool starts_with_mfspr_lr = false;
   while (true) {
+    if (function->module() && !function->module()->ContainsAddress(address)) {
+      XELOGW(
+          "PPCScanner::Scan left module: function={:08X}, address={:08X}",
+          start_address, address);
+      if (address > start_address) {
+        address -= 4;
+      }
+      break;
+    }
+
     uint32_t code =
         xe::load_and_swap<uint32_t>(memory->TranslateVirtual(address));
 
@@ -107,6 +127,10 @@ bool PPCScanner::Scan(GuestFunction* function, FunctionDebugInfo* debug_info) {
       // We can just ignore it because there's (very little)/no chance it'll
       // affect flow control.
       LOGPPC("Invalid instruction at {:08X}: {:08X}", address, code);
+      if (address == start_address) {
+        XELOGW("PPCScanner::Scan invalid first instruction: {:08X} {:08X}",
+               address, code);
+      }
     } else if (code == 0x4E800020) {
       // blr -- unconditional branch to LR.
       // This is generally a return.
@@ -257,10 +281,17 @@ bool PPCScanner::Scan(GuestFunction* function, FunctionDebugInfo* debug_info) {
     }
 
     address += 4;
-    if (end_address && address > end_address) {
+    if (address > scan_limit) {
       // Hmm....
-      LOGPPC("Ran over function bounds! {:08X}-{:08X}", start_address,
-             end_address);
+      if (end_address) {
+        LOGPPC("Ran over function bounds! {:08X}-{:08X}", start_address,
+               end_address);
+      } else {
+        XELOGW(
+            "PPCScanner::Scan reached fallback limit: {:08X}-{:08X}",
+            start_address, scan_limit);
+      }
+      address = scan_limit;
       break;
     }
   }

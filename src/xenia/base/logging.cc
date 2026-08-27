@@ -40,7 +40,7 @@
 #include <android/log.h>
 #elif XE_PLATFORM_WIN32
 // For MessageBox:
-//#include "xenia/base/platform_win.h"
+// #include "xenia/base/platform_win.h"
 #endif  // XE_PLATFORM
 
 #include "third_party/fmt/include/fmt/format.h"
@@ -406,7 +406,6 @@ class Logger {
   void AppendLine(uint32_t thread_id, const char prefix_char,
                   const char* buffer_data, size_t buffer_length,
                   bool terminate = false) {
-    return;
     size_t count = BlockCount(sizeof(LogLine) + buffer_length);
 
     auto range = claim_strategy_.claim(count);
@@ -435,13 +434,19 @@ void InitializeLogging(const std::string_view app_name) {
   auto mem = memory::AlignedAlloc<Logger>(0x10);
   logger_ = new (mem) Logger(app_name);
 
+#if XE_PLATFORM_WINRT
+  if (cvars::log_level < static_cast<int32_t>(LogLevel::Info)) {
+    cvars::log_level = static_cast<int32_t>(LogLevel::Info);
+  }
+#endif  // XE_PLATFORM_WINRT
+
 #if XE_PLATFORM_ANDROID
   // TODO(Triang3l): Enable file logging, but not by default as logs may be
   // huge.
   if (cvars::log_to_logcat) {
     logger_->AddLogSink(std::make_unique<AndroidLogSink>(app_name));
   }
-//#else // if UWP, we should fix this at some point, for now it's annoying to get a UWP path to here
+#else
   FILE* log_file = nullptr;
   if (cvars::log_file.empty()) {
     // Default to app name.
@@ -458,7 +463,7 @@ void InitializeLogging(const std::string_view app_name) {
     logger_->AddLogSink(std::make_unique<FileLogSink>(stdout, false));
   }
 
-  if (cvars::log_to_debugprint) {
+  if (cvars::log_to_debugprint || XE_PLATFORM_WINRT) {
     logger_->AddLogSink(std::make_unique<DebugPrintLogSink>());
   }
 #endif  // XE_PLATFORM_ANDROID

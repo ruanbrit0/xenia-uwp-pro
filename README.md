@@ -2,11 +2,21 @@
 
 Xenia Canary UWP is an unofficial fork of Xenia Canary to support UWP and the Xbox platforms. It is not associated with the Xenia developers.
 
+## Status Do Fork
+
+Este repositorio mantem o app UWP em `xenia-canary-uwp/` em cima do Xenia Canary, com ajustes especificos para rodar em UWP/Xbox. O foco atual e estabilizar inicializacao, acesso a arquivos, perfil de usuario, montagem de conteudo/cache e chamadas de kernel usadas por titulos retail.
+
+O port ainda e experimental. Alguns jogos podem abrir menus e ainda travar, congelar ou ficar em loading durante a entrada no gameplay.
+
 ## Como Rodar Localmente
 
-Este fork tem foco no app UWP/Xbox em `xenia-canary-uwp/`. Para rodar localmente no Visual Studio, abra `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecione `Debug | x64 | Local Machine`, defina `xenia-canary-uwp` como projeto inicial e pressione `F5`.
+Em um checkout limpo no Windows, rode o setup uma vez para atualizar submodulos e gerar os projetos em `build/`:
 
-Em um checkout limpo, rode `./xb.ps1 setup` uma vez para atualizar submodulos e gerar os projetos em `build/`. O guia geral de build desktop/Premake fica em `docs/building.md`; no Windows deste repo, use `./xb.ps1 <comando>` em vez de `xb` diretamente.
+```powershell
+.\xb.ps1 setup
+```
+
+Para rodar o app UWP no Visual Studio, abra `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecione `Debug | x64 | Local Machine`, defina `xenia-canary-uwp` como projeto inicial e pressione `F5`.
 
 Build UWP direto por MSBuild:
 
@@ -17,10 +27,12 @@ Build UWP direto por MSBuild:
 O pacote gerado fica em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.7.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.8.0_Debug_Test\
 ```
 
-Notas locais de build e manutencao UWP estao em `AGENTS.md`.
+Guia completo de setup, build, pacote e deploy UWP/Xbox: `docs/uwp.md`.
+
+O guia geral de build desktop/Premake fica em `docs/building.md`. No Windows deste repo, use `.\xb.ps1 <comando>` em vez de `xb` diretamente.
 
 Join SirMangler's UWP Discord server for help: https://discord.gg/UXVT66JSm8
 

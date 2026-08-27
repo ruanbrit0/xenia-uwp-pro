@@ -16,8 +16,10 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/string.h"
 #include "xenia/cpu/cpu_flags.h"
@@ -48,6 +50,14 @@ using xe::cpu::hir::Value;
 // The number of times each opcode has been translated.
 // Accumulated across the entire run.
 uint32_t opcode_translation_counts[static_cast<int>(PPCOpcode::kInvalid)] = {0};
+
+bool CanBreakIntoDebugger() {
+#if XE_PLATFORM_WINRT
+  return xe::debugging::IsDebuggerAttached();
+#else
+  return true;
+#endif
+}
 
 void DumpAllOpcodeCounts() {
   StringBuffer sb;
@@ -125,7 +135,6 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
     uint32_t code =
         xe::load_and_swap<uint32_t>(memory->TranslateVirtual(address));
     auto opcode = LookupOpcode(code);
-    auto& opcode_info = GetOpcodeInfo(opcode);
 
     // Mark label, if we were assigned one earlier on in the walk.
     // We may still get a label, but it'll be inserted by LookupLabel
@@ -163,6 +172,8 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
       // TraceInvalidInstruction(i);
       continue;
     }
+
+    auto& opcode_info = GetOpcodeInfo(opcode);
     ++opcode_translation_counts[static_cast<int>(opcode)];
 
     // Synchronize the PPC context as required.
@@ -186,7 +197,8 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
           "developers; to skip, disable break_on_unimplemented_instructions",
           address, code, disasm_info.name);
       Comment("UNIMPLEMENTED!");
-      if (cvars::break_on_unimplemented_instructions) {
+      if (cvars::break_on_unimplemented_instructions &&
+          CanBreakIntoDebugger()) {
         DebugBreak();
       }
     }
@@ -201,6 +213,9 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
 
 void PPCHIRBuilder::MaybeBreakOnInstruction(uint32_t address) {
   if (address != cvars::break_on_instruction) {
+    return;
+  }
+  if (!CanBreakIntoDebugger()) {
     return;
   }
 

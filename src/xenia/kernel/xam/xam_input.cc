@@ -251,6 +251,11 @@ X_HRESULT_result_t XamUserGetDeviceContext_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamUserGetDeviceContext, kInput, kStub);
 
+dword_result_t XamInputGetUserVibrationLevel_entry(const ppc_context_t& ctx) {
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamInputGetUserVibrationLevel, kInput, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

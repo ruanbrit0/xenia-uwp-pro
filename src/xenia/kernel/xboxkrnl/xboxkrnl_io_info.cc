@@ -22,11 +22,21 @@
 #include "xenia/kernel/xsymboliclink.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/vfs/device.h"
+#include "xenia/vfs/devices/null_entry.h"
 #include "xenia/xbox.h"
 
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
+
+static const std::string& GetFilePathForInfoLog(const object_ref<XFile>& file) {
+  static const std::string invalid_path = "<invalid>";
+  return file ? file->entry()->absolute_path() : invalid_path;
+}
+
+static bool IsNullDeviceInfoFile(const object_ref<XFile>& file) {
+  return file && dynamic_cast<xe::vfs::NullEntry*>(file->entry()) != nullptr;
+}
 
 uint32_t GetQueryFileInfoMinimumLength(uint32_t info_class) {
   switch (info_class) {
@@ -57,19 +67,36 @@ uint32_t GetQueryFileInfoMinimumLength(uint32_t info_class) {
 dword_result_t NtQueryInformationFile_entry(
     dword_t file_handle, pointer_t<X_IO_STATUS_BLOCK> io_status_block_ptr,
     lpvoid_t info_ptr, dword_t info_length, dword_t info_class) {
+  XELOGI(
+      "NtQueryInformationFile begin: handle={:08X}, class={}, length={}",
+      static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+      static_cast<uint32_t>(info_length));
+
   uint32_t minimum_length = GetQueryFileInfoMinimumLength(info_class);
   if (!minimum_length) {
+    XELOGE("NtQueryInformationFile invalid class: {}",
+           static_cast<uint32_t>(info_class));
     return X_STATUS_INVALID_INFO_CLASS;
   }
 
   if (info_length < minimum_length) {
+    XELOGE(
+        "NtQueryInformationFile length mismatch: class={}, length={}, "
+        "minimum={}",
+        static_cast<uint32_t>(info_class), static_cast<uint32_t>(info_length),
+        minimum_length);
     return X_STATUS_INFO_LENGTH_MISMATCH;
   }
 
   auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
   if (!file) {
+    XELOGE("NtQueryInformationFile invalid handle: {:08X}",
+           static_cast<uint32_t>(file_handle));
     return X_STATUS_INVALID_HANDLE;
   }
+  XELOGI("NtQueryInformationFile file: path='{}', device='{}', null={}",
+         GetFilePathForInfoLog(file), file->device()->name(),
+         IsNullDeviceInfoFile(file));
 
   info_ptr.Zero(info_length);
 
@@ -151,6 +178,12 @@ dword_result_t NtQueryInformationFile_entry(
     io_status_block_ptr->information = out_length;
   }
 
+  XELOGI(
+      "NtQueryInformationFile result: handle={:08X}, class={}, "
+      "status={:08X}, out_length={}",
+      static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+      status, out_length);
+
   return status;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryInformationFile, kFileSystem, kImplemented);
@@ -187,19 +220,35 @@ uint32_t GetSetFileInfoMinimumLength(uint32_t info_class) {
 dword_result_t NtSetInformationFile_entry(
     dword_t file_handle, pointer_t<X_IO_STATUS_BLOCK> io_status_block,
     lpvoid_t info_ptr, dword_t info_length, dword_t info_class) {
+  XELOGI("NtSetInformationFile begin: handle={:08X}, class={}, length={}",
+         static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+         static_cast<uint32_t>(info_length));
+
   uint32_t minimum_length = GetSetFileInfoMinimumLength(info_class);
   if (!minimum_length) {
+    XELOGE("NtSetInformationFile invalid class: {}",
+           static_cast<uint32_t>(info_class));
     return X_STATUS_INVALID_INFO_CLASS;
   }
 
   if (info_length < minimum_length) {
+    XELOGE(
+        "NtSetInformationFile length mismatch: class={}, length={}, "
+        "minimum={}",
+        static_cast<uint32_t>(info_class), static_cast<uint32_t>(info_length),
+        minimum_length);
     return X_STATUS_INFO_LENGTH_MISMATCH;
   }
 
   auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
   if (!file) {
+    XELOGE("NtSetInformationFile invalid handle: {:08X}",
+           static_cast<uint32_t>(file_handle));
     return X_STATUS_INVALID_HANDLE;
   }
+  XELOGI("NtSetInformationFile file: path='{}', device='{}', null={}",
+         GetFilePathForInfoLog(file), file->device()->name(),
+         IsNullDeviceInfoFile(file));
 
   X_STATUS result = X_STATUS_SUCCESS;
   uint32_t out_length;
@@ -280,6 +329,12 @@ dword_result_t NtSetInformationFile_entry(
     io_status_block->information = out_length;
   }
 
+  XELOGI(
+      "NtSetInformationFile result: handle={:08X}, class={}, "
+      "status={:08X}, out_length={}",
+      static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+      result, out_length);
+
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT2(NtSetInformationFile, kFileSystem, kImplemented,
@@ -304,19 +359,37 @@ uint32_t GetQueryVolumeInfoMinimumLength(uint32_t info_class) {
 dword_result_t NtQueryVolumeInformationFile_entry(
     dword_t file_handle, pointer_t<X_IO_STATUS_BLOCK> io_status_block_ptr,
     lpvoid_t info_ptr, dword_t info_length, dword_t info_class) {
+  XELOGI(
+      "NtQueryVolumeInformationFile begin: handle={:08X}, class={}, "
+      "length={}",
+      static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+      static_cast<uint32_t>(info_length));
+
   uint32_t minimum_length = GetQueryVolumeInfoMinimumLength(info_class);
   if (!minimum_length) {
+    XELOGE("NtQueryVolumeInformationFile invalid class: {}",
+           static_cast<uint32_t>(info_class));
     return X_STATUS_INVALID_INFO_CLASS;
   }
 
   if (info_length < minimum_length) {
+    XELOGE(
+        "NtQueryVolumeInformationFile length mismatch: class={}, length={}, "
+        "minimum={}",
+        static_cast<uint32_t>(info_class), static_cast<uint32_t>(info_length),
+        minimum_length);
     return X_STATUS_INFO_LENGTH_MISMATCH;
   }
 
   auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
   if (!file) {
+    XELOGE("NtQueryVolumeInformationFile invalid handle: {:08X}",
+           static_cast<uint32_t>(file_handle));
     return X_STATUS_INVALID_HANDLE;
   }
+  XELOGI("NtQueryVolumeInformationFile file: path='{}', device='{}', null={}",
+         GetFilePathForInfoLog(file), file->device()->name(),
+         IsNullDeviceInfoFile(file));
 
   info_ptr.Zero(info_length);
 
@@ -364,9 +437,9 @@ dword_result_t NtQueryVolumeInformationFile_entry(
     }
     case XFileFsDeviceInformation: {
       auto info = info_ptr.as<X_FILE_FS_DEVICE_INFORMATION*>();
-      auto file_device = file->device();
       XELOGW("Stub XFileFsDeviceInformation!");
-      info->device_type = FILE_DEVICE_UNKNOWN;  // 415608D8 checks for 0x46;
+      info->device_type = IsNullDeviceInfoFile(file) ? FILE_DEVICE_DISK
+                                                     : FILE_DEVICE_UNKNOWN;
       info->characteristics = 0;
       out_length = sizeof(X_FILE_FS_DEVICE_INFORMATION);
       break;
@@ -382,6 +455,12 @@ dword_result_t NtQueryVolumeInformationFile_entry(
     io_status_block_ptr->status = status;
     io_status_block_ptr->information = out_length;
   }
+
+  XELOGI(
+      "NtQueryVolumeInformationFile result: handle={:08X}, class={}, "
+      "status={:08X}, out_length={}",
+      static_cast<uint32_t>(file_handle), static_cast<uint32_t>(info_class),
+      status, out_length);
 
   return status;
 }

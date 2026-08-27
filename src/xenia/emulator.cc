@@ -121,28 +121,28 @@ Emulator::Emulator(const std::filesystem::path& command_line,
       paused_(false),
       restoring_(false),
       restore_fence_() {
-  //#if XE_PLATFORM_WIN32 == 1
-//  // Show a disclaimer that links to the quickstart
-//  // guide the first time they ever open the emulator
-//  uint64_t persistent_flags = GetPersistentEmulatorFlags();
-//  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
-//    if ((MessageBoxW(
-//             nullptr,
-//             L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
-//             "support is unavailable for illegally obtained software.\n\n"
-//             "Please respect this policy as no further reminders will be "
-//             "given.\n\nThe quickstart guide explains how to use digital or "
-//             "physical games from your Xbox 360 console.\n\nWould you like "
-//             "to open it?",
-//             L"Xenia", MB_YESNO | MB_ICONQUESTION) == IDYES)) {
-//      LaunchWebBrowser(
-//          "https://github.com/xenia-project/xenia/wiki/"
-//          "Quickstart#how-to-rip-games");
-//    }
-//    SetPersistentEmulatorFlags(persistent_flags |
-//                               EmulatorFlagDisclaimerAcknowledged);
-//  }
-//#endif
+  // #if XE_PLATFORM_WIN32 == 1
+  //  // Show a disclaimer that links to the quickstart
+  //  // guide the first time they ever open the emulator
+  //  uint64_t persistent_flags = GetPersistentEmulatorFlags();
+  //  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+  //    if ((MessageBoxW(
+  //             nullptr,
+  //             L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
+  //             "support is unavailable for illegally obtained software.\n\n"
+  //             "Please respect this policy as no further reminders will be "
+  //             "given.\n\nThe quickstart guide explains how to use digital or
+  //             " "physical games from your Xbox 360 console.\n\nWould you like
+  //             " "to open it?", L"Xenia", MB_YESNO | MB_ICONQUESTION) ==
+  //             IDYES)) {
+  //      LaunchWebBrowser(
+  //          "https://github.com/xenia-project/xenia/wiki/"
+  //          "Quickstart#how-to-rip-games");
+  //    }
+  //    SetPersistentEmulatorFlags(persistent_flags |
+  //                               EmulatorFlagDisclaimerAcknowledged);
+  //  }
+  // #endif
 }
 
 Emulator::~Emulator() {
@@ -315,7 +315,7 @@ X_STATUS Emulator::TerminateTitle() {
   return X_STATUS_SUCCESS;
 }
 
-const std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
+std::unique_ptr<vfs::Device> Emulator::CreateVfsDevice(
     const std::filesystem::path& path, const std::string_view mount_path) {
   // Must check if the type has changed e.g. XamSwapDisc
   switch (xe::GetFileSignature(path)) {
@@ -390,13 +390,33 @@ void Emulator::SetPersistentEmulatorFlags(uint64_t new_flags) {
 
 X_STATUS Emulator::MountPath(const std::filesystem::path& path,
                              const std::string_view mount_path) {
-  auto device = CreateVfsDevice(path, mount_path);
-  if (!device || !device->Initialize()) {
-    XELOGE(
-        "Unable to mount the selected file, it is an unsupported format or "
-        "corrupted.");
+  XELOGI("MountPath begin: path='{}', mount='{}'", xe::path_to_utf8(path),
+         mount_path);
+
+  std::unique_ptr<vfs::Device> device;
+  try {
+    device = CreateVfsDevice(path, mount_path);
+    if (!device) {
+      XELOGE("MountPath failed to create VFS device");
+      return X_STATUS_NO_SUCH_FILE;
+    }
+
+    XELOGI("MountPath initializing VFS device");
+    if (!device->Initialize()) {
+      XELOGE(
+          "Unable to mount the selected file, it is an unsupported format or "
+          "corrupted.");
+      return X_STATUS_NO_SUCH_FILE;
+    }
+  } catch (const std::exception& e) {
+    XELOGE("MountPath failed with exception: {}", e.what());
+    return X_STATUS_NO_SUCH_FILE;
+  } catch (...) {
+    XELOGE("MountPath failed with unknown exception");
     return X_STATUS_NO_SUCH_FILE;
   }
+
+  XELOGI("MountPath registering VFS device");
   if (!file_system_->RegisterDevice(std::move(device))) {
     XELOGE("Unable to register the input file to {}.",
            xe::path_to_utf8(mount_path));
@@ -411,26 +431,42 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
   file_system_->RegisterSymbolicLink(kDefaultGameSymbolicLink, mount_path);
   file_system_->RegisterSymbolicLink(kDefaultPartitionSymbolicLink, mount_path);
 
+  XELOGI("MountPath success");
   return X_STATUS_SUCCESS;
 }
 
 Emulator::FileSignatureType GetFileSignature(
     const std::filesystem::path& path) {
+  XELOGI("GetFileSignature begin: {}", xe::path_to_utf8(path));
   FILE* file = xe::filesystem::OpenFile(path, "rb");
 
   if (!file) {
+    XELOGE("GetFileSignature failed to open file");
     return Emulator::FileSignatureType::Unknown;
   }
 
-  const uint64_t file_size = std::filesystem::file_size(path);
+  uint64_t file_size = 0;
+  try {
+    file_size = std::filesystem::file_size(path);
+  } catch (const std::exception& e) {
+    XELOGE("GetFileSignature failed to query file size: {}", e.what());
+    fclose(file);
+    return Emulator::FileSignatureType::Unknown;
+  }
   const int64_t header_size = 4;
 
   if (file_size < header_size) {
+    fclose(file);
+    XELOGE("GetFileSignature file is too small: {} bytes", file_size);
     return Emulator::FileSignatureType::Unknown;
   }
 
   char file_magic[header_size];
-  fread_s(file_magic, sizeof(file_magic), 1, header_size, file);
+  if (fread_s(file_magic, sizeof(file_magic), header_size, 1, file) != 1) {
+    fclose(file);
+    XELOGE("GetFileSignature failed to read header");
+    return Emulator::FileSignatureType::Unknown;
+  }
 
   fourcc_t magic_value =
       make_fourcc(file_magic[0], file_magic[1], file_magic[2], file_magic[3]);
@@ -463,8 +499,20 @@ Emulator::FileSignatureType GetFileSignature(
   }
 
   file = xe::filesystem::OpenFile(path, "rb");
-  xe::filesystem::Seek(file, -header_size, SEEK_END);
-  fread_s(file_magic, sizeof(file_magic), 1, header_size, file);
+  if (!file) {
+    XELOGE("GetFileSignature failed to reopen file for footer check");
+    return Emulator::FileSignatureType::Unknown;
+  }
+  if (!xe::filesystem::Seek(file, -header_size, SEEK_END)) {
+    fclose(file);
+    XELOGE("GetFileSignature failed to seek footer");
+    return Emulator::FileSignatureType::Unknown;
+  }
+  if (fread_s(file_magic, sizeof(file_magic), header_size, 1, file) != 1) {
+    fclose(file);
+    XELOGE("GetFileSignature failed to read footer");
+    return Emulator::FileSignatureType::Unknown;
+  }
   fclose(file);
 
   magic_value =
@@ -480,17 +528,29 @@ Emulator::FileSignatureType GetFileSignature(
 
   XELOGI("Checking for XISO");
 
-  if (device->Initialize()) {
-    return Emulator::FileSignatureType::XISO;
+  try {
+    if (device->Initialize()) {
+      XELOGI("GetFileSignature detected XISO");
+      return Emulator::FileSignatureType::XISO;
+    }
+  } catch (const std::exception& e) {
+    XELOGE("GetFileSignature XISO check failed with exception: {}", e.what());
+  } catch (...) {
+    XELOGE("GetFileSignature XISO check failed with unknown exception");
   }
 
+  XELOGI("GetFileSignature result: Unknown");
   return Emulator::FileSignatureType::Unknown;
 }
 
 X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
+  XELOGI("LaunchPath begin: {}", xe::path_to_utf8(path));
   X_STATUS mount_result = X_STATUS_SUCCESS;
 
-  switch (xe::GetFileSignature(path)) {
+  auto signature = xe::GetFileSignature(path);
+  XELOGI("LaunchPath signature: {}", static_cast<int>(signature));
+
+  switch (signature) {
     case FileSignatureType::XEX1:
     case FileSignatureType::XEX2:
     case FileSignatureType::ELF: {
@@ -514,6 +574,7 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     case FileSignatureType::EXE:
     case FileSignatureType::Unknown:
     default:
+      XELOGE("LaunchPath failed: unsupported or unknown file signature");
       return X_STATUS_NOT_SUPPORTED;
       break;
   }
@@ -789,25 +850,25 @@ const std::filesystem::path Emulator::GetNewDiscPath(
     std::string window_message) {
   std::filesystem::path path = "";
 
-  //auto file_picker = xe::ui::FilePicker::Create();
-  //file_picker->set_mode(ui::FilePicker::Mode::kOpen);
-  //file_picker->set_type(ui::FilePicker::Type::kFile);
-  //file_picker->set_multi_selection(false);
-  //file_picker->set_title(!window_message.empty() ? window_message
-  //                                               : "Select Content Package");
-  //file_picker->set_extensions({
-  //    {"Supported Files", "*.iso;*.xex;*.xcp;*.*"},
-  //    {"Disc Image (*.iso)", "*.iso"},
-  //    {"Xbox Executable (*.xex)", "*.xex"},
-  //    {"All Files (*.*)", "*.*"},
-  //});
+  // auto file_picker = xe::ui::FilePicker::Create();
+  // file_picker->set_mode(ui::FilePicker::Mode::kOpen);
+  // file_picker->set_type(ui::FilePicker::Type::kFile);
+  // file_picker->set_multi_selection(false);
+  // file_picker->set_title(!window_message.empty() ? window_message
+  //                                                : "Select Content Package");
+  // file_picker->set_extensions({
+  //     {"Supported Files", "*.iso;*.xex;*.xcp;*.*"},
+  //     {"Disc Image (*.iso)", "*.iso"},
+  //     {"Xbox Executable (*.xex)", "*.xex"},
+  //     {"All Files (*.*)", "*.*"},
+  // });
 
-  //if (file_picker->Show()) {
-  //  auto selected_files = file_picker->selected_files();
-  //  if (!selected_files.empty()) {
-  //    path = selected_files[0];
-  //  }
-  //}
+  // if (file_picker->Show()) {
+  //   auto selected_files = file_picker->selected_files();
+  //   if (!selected_files.empty()) {
+  //     path = selected_files[0];
+  //   }
+  // }
   return path;
 }
 
@@ -1030,6 +1091,9 @@ static std::string format_version(xex2_version version) {
 
 X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                   const std::string_view module_path) {
+  XELOGI("CompleteLaunch begin: path='{}', module='{}'", xe::path_to_utf8(path),
+         module_path);
+
   // Making changes to the UI (setting the icon) and executing game config
   // load callbacks which expect to be called from the UI thread.
   assert_true(display_window_->app_context().IsInUIThread());
@@ -1045,15 +1109,49 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   // Partition1 will go to this. Registering during CompleteLaunch allows us
   // to make sure any HostPathDevices are ready beforehand. (see comment above
   // cache:\ device registration for more info about why)
-  auto null_paths = {std::string("\\Partition0"), std::string("\\Cache0"),
-                     std::string("\\Cache1")};
+  for (const auto& cache_name : {"Cache0", "Cache1"}) {
+    auto mount_path = fmt::format("\\Device\\Harddisk0\\{}", cache_name);
+    auto host_path = storage_root() / cache_name;
+    auto cache_device =
+        std::make_unique<vfs::HostPathDevice>(mount_path, host_path, false);
+    if (cache_device->Initialize()) {
+      file_system_->RegisterDevice(std::move(cache_device));
+      XELOGI("CompleteLaunch registered hard disk cache device: {} => {}",
+             mount_path, xe::path_to_utf8(host_path));
+    } else {
+      XELOGE("CompleteLaunch failed to initialize hard disk cache device: {}",
+             xe::path_to_utf8(host_path));
+    }
+  }
+
+  std::error_code content_root_ec;
+  std::filesystem::create_directories(content_root(), content_root_ec);
+  if (!content_root_ec) {
+    auto content_device = std::make_unique<vfs::HostPathDevice>(
+        "\\Device\\Harddisk0\\Partition1\\Content", content_root(), false);
+    if (content_device->Initialize()) {
+      file_system_->RegisterDevice(std::move(content_device));
+      XELOGI("CompleteLaunch registered hard disk content device: {}",
+             xe::path_to_utf8(content_root()));
+    } else {
+      XELOGE("CompleteLaunch failed to initialize content device: {}",
+             xe::path_to_utf8(content_root()));
+    }
+  } else {
+    XELOGE("CompleteLaunch failed to create content root '{}': {}",
+           xe::path_to_utf8(content_root()), content_root_ec.message());
+  }
+
+  auto null_paths = {std::string("\\Partition0")};
   auto null_device =
       std::make_unique<vfs::NullDevice>("\\Device\\Harddisk0", null_paths);
   if (null_device->Initialize()) {
     file_system_->RegisterDevice(std::move(null_device));
+    XELOGI("CompleteLaunch registered hard disk null device");
   }
 
   // Reset state.
+  XELOGI("CompleteLaunch resetting title state");
   title_id_ = std::nullopt;
   title_name_ = "";
   title_version_ = "";
@@ -1068,19 +1166,25 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     XELOGE("Failed to load user module {}", xe::path_to_utf8(path));
     return X_STATUS_NOT_FOUND;
   }
+  XELOGI("CompleteLaunch loaded user module");
 
+  XELOGI("CompleteLaunch applying title update");
   X_RESULT result = kernel_state_->ApplyTitleUpdate(module);
   if (XFAILED(result)) {
     XELOGE("Failed to apply title update! Cannot run module {}",
            xe::path_to_utf8(path));
     return result;
   }
+  XELOGI("CompleteLaunch applied title update");
 
+  XELOGI("CompleteLaunch finishing user module load");
   result = kernel_state_->FinishLoadingUserModule(module);
   if (XFAILED(result)) {
     XELOGE("Failed to initialize user module {}", xe::path_to_utf8(path));
     return result;
   }
+  XELOGI("CompleteLaunch finished user module load");
+
   // Grab the current title ID.
   xex2_opt_execution_info* info = nullptr;
   uint32_t workspace_address = 0;
@@ -1102,6 +1206,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       title_version_ = format_version(title_version);
     }
   }
+  XELOGI("CompleteLaunch title id: {:08X}", title_id_.value());
 
   // Try and load the resource database (xex only).
   if (module->title_id()) {
@@ -1109,6 +1214,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
     // Load the per-game configuration file and make sure updates are handled
     // by the callbacks.
+    XELOGI("CompleteLaunch loading game config: {}", title_id);
     config::LoadGameConfig(title_id);
     assert_true(game_config_load_callback_loop_next_index_ == SIZE_MAX);
     game_config_load_callback_loop_next_index_ = 0;
@@ -1191,16 +1297,21 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   // miss the initial seconds - for instance, sound from an intro video may
   // start playing before the video can be seen if doing this in parallel with
   // the main thread.
+  XELOGI("CompleteLaunch initializing shader storage");
   on_shader_storage_initialization(true);
   graphics_system_->InitializeShaderStorage(cache_root_, title_id_.value(),
                                             true);
   on_shader_storage_initialization(false);
+  XELOGI("CompleteLaunch initialized shader storage");
 
+  XELOGI("CompleteLaunch launching main module thread");
   auto main_thread = kernel_state_->LaunchModule(module);
   if (!main_thread) {
+    XELOGE("CompleteLaunch failed to launch main module thread");
     return X_STATUS_UNSUCCESSFUL;
   }
   main_thread_ = main_thread;
+  XELOGI("CompleteLaunch launched main module thread");
   on_launch(title_id_.value(), title_name_);
 
   // Plugins must be loaded after calling LaunchModule() and

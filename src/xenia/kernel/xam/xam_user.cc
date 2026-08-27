@@ -26,8 +26,14 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+constexpr uint32_t kUserIndexAny = 0xFF;
+
+uint32_t ResolveUserIndex(uint32_t user_index) {
+  return user_index == kUserIndexAny ? 0 : user_index;
+}
+
 X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
-                                        lpqword_t xuid_ptr) {
+                                         lpqword_t xuid_ptr) {
   assert_true(type_mask == 1 || type_mask == 2 || type_mask == 3 ||
               type_mask == 4 || type_mask == 7);
   if (!xuid_ptr) {
@@ -35,9 +41,10 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
   }
   uint32_t result = X_E_NO_SUCH_USER;
   uint64_t xuid = 0;
-  if (user_index < 4) {
-    if (kernel_state()->IsUserSignedIn(user_index)) {
-      const auto& user_profile = kernel_state()->user_profile(user_index);
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index < 4) {
+    if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+      const auto& user_profile = kernel_state()->user_profile(actual_user_index);
       auto type = user_profile->type() & type_mask;
       if (type & (2 | 4)) {
         // maybe online profile?
@@ -57,13 +64,30 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
 }
 DECLARE_XAM_EXPORT1(XamUserGetXUID, kUserProfiles, kImplemented);
 
+dword_result_t XamUserGetIndexFromXUID_entry(qword_t xuid, dword_t flags,
+                                             lpdword_t index) {
+  if (!index) {
+    return X_E_INVALIDARG;
+  }
+
+  const auto user_profile = kernel_state()->user_profile(uint32_t(0));
+  if (!user_profile || user_profile->xuid() != static_cast<uint64_t>(xuid)) {
+    return X_E_NO_SUCH_USER;
+  }
+
+  *index = 0;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserGetIndexFromXUID, kUserProfiles, kImplemented);
+
 dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
   // Yield, as some games spam this.
   xe::threading::MaybeYield();
   uint32_t signin_state = 0;
-  if (user_index < 4) {
-    if (kernel_state()->IsUserSignedIn(user_index)) {
-      const auto& user_profile = kernel_state()->user_profile(user_index);
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index < 4) {
+    if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+      const auto& user_profile = kernel_state()->user_profile(actual_user_index);
       signin_state = user_profile->signin_state();
     }
   }
@@ -89,14 +113,15 @@ X_HRESULT_result_t XamUserGetSigninInfo_entry(
   }
 
   std::memset(info, 0, sizeof(X_USER_SIGNIN_INFO));
-  if (user_index > 3) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index > 3) {
     return X_E_NO_SUCH_USER;
   }
 
   kernel_state()->UpdateUsedUserProfiles();
 
-  if (kernel_state()->IsUserSignedIn(user_index)) {
-    const auto& user_profile = kernel_state()->user_profile(user_index);
+  if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+    const auto& user_profile = kernel_state()->user_profile(actual_user_index);
     info->xuid = user_profile->xuid();
     info->signin_state = user_profile->signin_state();
     xe::string_util::copy_truncating(info->name, user_profile->name(),
@@ -110,12 +135,13 @@ DECLARE_XAM_EXPORT1(XamUserGetSigninInfo, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetName_entry(dword_t user_index, lpstring_t buffer,
                                     dword_t buffer_len) {
-  if (user_index >= 4) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
     return X_E_INVALIDARG;
   }
 
-  if (kernel_state()->IsUserSignedIn(user_index)) {
-    const auto& user_profile = kernel_state()->user_profile(user_index);
+  if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+    const auto& user_profile = kernel_state()->user_profile(actual_user_index);
     const auto& user_name = user_profile->name();
     xe::string_util::copy_truncating(
         buffer, user_name, std::min(buffer_len.value(), uint32_t(16)));
@@ -129,7 +155,8 @@ DECLARE_XAM_EXPORT1(XamUserGetName, kUserProfiles, kImplemented);
 dword_result_t XamUserGetGamerTag_entry(dword_t user_index,
                                         lpu16string_t buffer,
                                         dword_t buffer_len) {
-  if (user_index >= 4) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
     return X_E_INVALIDARG;
   }
 
@@ -137,11 +164,11 @@ dword_result_t XamUserGetGamerTag_entry(dword_t user_index,
     return X_E_INVALIDARG;
   }
 
-  if (!kernel_state()->IsUserSignedIn(user_index)) {
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
     return X_E_INVALIDARG;
   }
 
-  const auto& user_profile = kernel_state()->user_profile(user_index);
+  const auto& user_profile = kernel_state()->user_profile(actual_user_index);
   auto user_name = xe::to_utf16(user_profile->name());
   xe::string_util::copy_and_swap_truncating(
       buffer, user_name, std::min(buffer_len.value(), uint32_t(16)));
@@ -159,10 +186,13 @@ static_assert_size(X_USER_READ_PROFILE_SETTINGS, 8);
 uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
                                       uint32_t xuid_count, be<uint64_t>* xuids,
                                       uint32_t setting_count,
-                                      be<uint32_t>* setting_ids, uint32_t unk,
+                                      be<uint32_t>* setting_ids,
+                                      uint32_t unused,
                                       be<uint32_t>* buffer_size_ptr,
                                       uint8_t* buffer,
                                       XAM_OVERLAPPED* overlapped) {
+  assert_zero(unused);
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
   if (!xuid_count) {
     assert_null(xuids);
   } else {
@@ -172,13 +202,11 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
     // TODO(gibbed): we assert here, but in case a title passes xuid_count > 1
     // until it's implemented for release builds...
     xuid_count = 1;
-    if (kernel_state()->IsUserSignedIn(user_index)) {
-      const auto& user_profile = kernel_state()->user_profile(user_index);
+    if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+      const auto& user_profile = kernel_state()->user_profile(actual_user_index);
       assert_true(static_cast<uint64_t>(xuids[0]) == user_profile->xuid());
     }
   }
-  assert_zero(unk);  // probably flags
-
   // must have at least 1 to 32 settings
   if (setting_count < 1 || setting_count > 32) {
     return X_ERROR_INVALID_PARAMETER;
@@ -226,7 +254,7 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
 
   // Title ID = 0 means us.
   // 0xfffe07d1 = profile?
-  if (!kernel_state()->IsUserSignedIn(user_index) && !xuids) {
+  if (!kernel_state()->IsUserSignedIn(actual_user_index) && !xuids) {
     if (overlapped) {
       kernel_state()->CompleteOverlappedImmediate(
           kernel_state()->memory()->HostToGuestVirtual(overlapped),
@@ -236,7 +264,7 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
     return X_ERROR_NO_SUCH_USER;
   }
 
-  auto user_profile = kernel_state()->user_profile(user_index);
+  auto user_profile = kernel_state()->user_profile(actual_user_index);
 
   if (xuids) {
     uint64_t user_xuid = static_cast<uint64_t>(xuids[0]);
@@ -257,27 +285,15 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
 
   // TODO(gibbed): setting validity checking without needing a user profile
   // object.
-  bool any_missing = false;
   for (uint32_t i = 0; i < setting_count; ++i) {
     auto setting_id = static_cast<uint32_t>(setting_ids[i]);
     auto setting = user_profile->GetSetting(setting_id);
     if (!setting) {
-      any_missing = true;
-      XELOGE(
-          "xeXamUserReadProfileSettingsEx requested unimplemented setting "
+      XELOGW(
+          "XamUserReadProfileSettings: returning unset for unknown setting "
           "{:08X}",
           setting_id);
     }
-  }
-  if (any_missing) {
-    // TODO(benvanik): don't fail? most games don't even check!
-    if (overlapped) {
-      kernel_state()->CompleteOverlappedImmediate(
-          kernel_state()->memory()->HostToGuestVirtual(overlapped),
-          X_ERROR_INVALID_PARAMETER);
-      return X_ERROR_IO_PENDING;
-    }
-    return X_ERROR_INVALID_PARAMETER;
   }
 
   auto out_header = reinterpret_cast<X_USER_READ_PROFILE_SETTINGS*>(buffer);
@@ -300,7 +316,7 @@ uint32_t XamUserReadProfileSettingsEx(uint32_t title_id, uint32_t user_index,
       out_setting->xuid = user_profile->xuid();
     } else {
       out_setting->xuid = -1;
-      out_setting->user_index = user_index;
+      out_setting->user_index = actual_user_index;
     }
     out_setting->setting_id = setting_id;
 
@@ -334,10 +350,12 @@ DECLARE_XAM_EXPORT1(XamUserReadProfileSettings, kUserProfiles, kImplemented);
 dword_result_t XamUserReadProfileSettingsEx_entry(
     dword_t title_id, dword_t user_index, dword_t xuid_count, lpqword_t xuids,
     dword_t setting_count, lpdword_t setting_ids, lpdword_t buffer_size_ptr,
-    dword_t unk_2, lpvoid_t buffer_ptr, pointer_t<XAM_OVERLAPPED> overlapped) {
-  return XamUserReadProfileSettingsEx(title_id, user_index, xuid_count, xuids,
-                                      setting_count, setting_ids, unk_2,
-                                      buffer_size_ptr, buffer_ptr, overlapped);
+    lpdword_t unkn_buffer_size_ptr, lpvoid_t buffer_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return XamUserReadProfileSettingsEx(
+      title_id, user_index, xuid_count, xuids, setting_count, setting_ids, 0,
+      buffer_size_ptr ? buffer_size_ptr : unkn_buffer_size_ptr, buffer_ptr,
+      overlapped);
 }
 DECLARE_XAM_EXPORT1(XamUserReadProfileSettingsEx, kUserProfiles, kImplemented);
 
@@ -350,7 +368,8 @@ dword_result_t XamUserWriteProfileSettings_entry(
   }
 
   // Skip writing data about users with id != 0 they're not supported
-  if (user_index > 0) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index > 0) {
     if (overlapped) {
       kernel_state()->CompleteOverlappedImmediate(
           kernel_state()->memory()->HostToGuestVirtual(overlapped),
@@ -360,7 +379,7 @@ dword_result_t XamUserWriteProfileSettings_entry(
     return X_ERROR_SUCCESS;
   }
   // Update and save settings.
-  const auto& user_profile = kernel_state()->user_profile(user_index);
+  const auto& user_profile = kernel_state()->user_profile(actual_user_index);
 
   for (uint32_t n = 0; n < setting_count; ++n) {
     const X_USER_PROFILE_SETTING& setting = settings[n];
@@ -399,11 +418,31 @@ dword_result_t XamUserWriteProfileSettings_entry(
         user_setting->SetNewSettingSource(X_USER_PROFILE_SETTING_SOURCE::TITLE);
         user_profile->AddSetting(std::move(user_setting));
       } break;
+      case X_USER_DATA_TYPE::INT32: {
+        auto user_setting =
+            std::make_unique<UserSetting>(setting.setting_id, setting.data.s32);
+        user_setting->SetNewSettingSource(X_USER_PROFILE_SETTING_SOURCE::TITLE);
+        user_profile->AddSetting(std::move(user_setting));
+      } break;
+      case X_USER_DATA_TYPE::INT64: {
+        auto user_setting =
+            std::make_unique<UserSetting>(setting.setting_id, setting.data.s64);
+        user_setting->SetNewSettingSource(X_USER_PROFILE_SETTING_SOURCE::TITLE);
+        user_profile->AddSetting(std::move(user_setting));
+      } break;
+      case X_USER_DATA_TYPE::FLOAT: {
+        auto user_setting =
+            std::make_unique<UserSetting>(setting.setting_id, setting.data.f32);
+        user_setting->SetNewSettingSource(X_USER_PROFILE_SETTING_SOURCE::TITLE);
+        user_profile->AddSetting(std::move(user_setting));
+      } break;
+      case X_USER_DATA_TYPE::DOUBLE: {
+        auto user_setting =
+            std::make_unique<UserSetting>(setting.setting_id, setting.data.f64);
+        user_setting->SetNewSettingSource(X_USER_PROFILE_SETTING_SOURCE::TITLE);
+        user_profile->AddSetting(std::move(user_setting));
+      } break;
       case X_USER_DATA_TYPE::WSTRING:
-      case X_USER_DATA_TYPE::DOUBLE:
-      case X_USER_DATA_TYPE::FLOAT:
-      case X_USER_DATA_TYPE::INT32:
-      case X_USER_DATA_TYPE::INT64:
       case X_USER_DATA_TYPE::DATETIME:
       default: {
         XELOGE("XamUserWriteProfileSettings: Unimplemented data type {}",
@@ -433,15 +472,15 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
     }
   }
 
-  // If we deny everything, games should hopefully not try to do stuff.
-  *out_value = 0;
+  *out_value = 1;
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kStub);
 
 dword_result_t XamUserContentRestrictionGetFlags_entry(dword_t user_index,
                                                        lpdword_t out_flags) {
-  if (!kernel_state()->IsUserSignedIn(user_index)) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
 
@@ -455,7 +494,8 @@ dword_result_t XamUserContentRestrictionGetRating_entry(dword_t user_index,
                                                         dword_t unk1,
                                                         lpdword_t out_unk2,
                                                         lpdword_t out_unk3) {
-  if (!kernel_state()->IsUserSignedIn(user_index)) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
 
@@ -486,28 +526,38 @@ dword_result_t XamUserIsOnlineEnabled_entry(dword_t user_index) { return 1; }
 DECLARE_XAM_EXPORT1(XamUserIsOnlineEnabled, kUserProfiles, kStub);
 
 dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
-  if (user_index >= 4) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  if (kernel_state()->IsUserSignedIn(user_index)) {
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
     return X_ERROR_NO_SUCH_USER;
   }
   return 6 /* 6 appears to be Gold */;
 }
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kStub);
 
+dword_result_t XamUserGetMembershipTierFromXUID_entry(qword_t xuid) {
+  if (!kernel_state()->IsUserSignedIn(static_cast<uint64_t>(xuid))) {
+    return 0;
+  }
+  return 6 /* 6 appears to be Gold */;
+}
+DECLARE_XAM_EXPORT1(XamUserGetMembershipTierFromXUID, kUserProfiles, kStub);
+
 dword_result_t XamUserAreUsersFriends_entry(dword_t user_index, dword_t unk1,
                                             dword_t unk2, lpdword_t out_value,
                                             dword_t overlapped_ptr) {
   uint32_t are_friends = 0;
   X_RESULT result;
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
 
-  if (user_index >= 4) {
+  if (actual_user_index >= 4) {
     result = X_ERROR_INVALID_PARAMETER;
   } else {
-    if (kernel_state()->IsUserSignedIn(user_index)) {
-      const auto& user_profile = kernel_state()->user_profile(user_index);
+    if (kernel_state()->IsUserSignedIn(actual_user_index)) {
+      const auto& user_profile = kernel_state()->user_profile(actual_user_index);
       if (user_profile->signin_state() == 0) {
         result = X_ERROR_NOT_LOGGED_ON;
       } else {
@@ -550,7 +600,7 @@ dword_result_t XamShowSigninUI_entry(dword_t unk, dword_t unk_mask) {
   for (uint32_t i = 0; i < 4; i++) {
     if (kernel_state()->IsUserSignedIn(i)) {
       // XN_SYS_SIGNINCHANGED
-      kernel_state()->BroadcastNotification(0xA, i);
+      kernel_state()->BroadcastNotification(0xA, 1u << i);
     }
   }
 
@@ -568,7 +618,8 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  if (user_index >= 4) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -583,7 +634,7 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
 
   auto e = object_ref<XAchievementEnumerator>(
       new XAchievementEnumerator(kernel_state(), count, flags));
-  auto result = e->Initialize(user_index, 0xFB, 0xB000A, 0xB000B, 0);
+  auto result = e->Initialize(actual_user_index, 0xFB, 0xB000A, 0xB000B, 0);
   if (XFAILED(result)) {
     return result;
   }
@@ -697,16 +748,79 @@ dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(
 DECLARE_XAM_EXPORT1(XamUserIsUnsafeProgrammingAllowed, kUserProfiles, kStub);
 
 dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
-                                                dword_t unk2, dword_t unk3,
-                                                dword_t unk4, dword_t unk5,
-                                                dword_t unk6) {
-  if (!unk2 || !unk3 || user_index > 4) {
-    return 0x80070057;
+                                                lpdword_t subscription_ptr,
+                                                lpdword_t flags_ptr,
+                                                dword_t overlapped_ptr) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
+    return X_E_INVALIDARG;
   }
 
-  return 0;
+  if (!subscription_ptr || !flags_ptr) {
+    return X_E_INVALIDARG;
+  }
+
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  *subscription_ptr = 6 /* Gold */;
+  *flags_ptr = 0;
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
+                                                X_ERROR_SUCCESS);
+    return X_ERROR_IO_PENDING;
+  }
+
+  return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kStub);
+
+dword_result_t XamUserGetCachedUserFlags_entry(dword_t user_index) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  return kernel_state()->IsUserSignedIn(actual_user_index) ? 0 : 0;
+}
+DECLARE_XAM_EXPORT1(XamUserGetCachedUserFlags, kUserProfiles, kStub);
+
+dword_result_t XamUserGetUserFlags_entry(dword_t user_index) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  return kernel_state()->IsUserSignedIn(actual_user_index) ? 0 : 0;
+}
+DECLARE_XAM_EXPORT1(XamUserGetUserFlags, kUserProfiles, kStub);
+
+dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) { return 0; }
+DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kStub);
+
+dword_result_t XamUserGetUserTenure_entry(dword_t user_index,
+                                          lpdword_t tenure_level_ptr,
+                                          lpdword_t milestone_ptr,
+                                          lpqword_t milestone_date_ptr,
+                                          dword_t overlapped_ptr) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (!kernel_state()->IsUserSignedIn(actual_user_index)) {
+    return X_E_INVALIDARG;
+  }
+
+  if (tenure_level_ptr) {
+    *tenure_level_ptr = 0;
+  }
+  if (milestone_ptr) {
+    *milestone_ptr = 0;
+  }
+  if (milestone_date_ptr) {
+    *milestone_date_ptr = 0;
+  }
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
+                                                X_ERROR_SUCCESS);
+    return X_ERROR_IO_PENDING;
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserGetUserTenure, kUserProfiles, kStub);
 
 constexpr uint8_t kStatsMaxAmount = 64;
 
@@ -725,7 +839,8 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  if (user_index >= 4) {
+  const uint32_t actual_user_index = ResolveUserIndex(user_index);
+  if (actual_user_index >= 4) {
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -743,7 +858,8 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
 
   auto e = object_ref<XUserStatsEnumerator>(
       new XUserStatsEnumerator(kernel_state(), 0));
-  const X_STATUS result = e->Initialize(user_index, 0xFB, 0xB0023, 0xB0024, 0);
+  const X_STATUS result =
+      e->Initialize(actual_user_index, 0xFB, 0xB0023, 0xB0024, 0);
   if (XFAILED(result)) {
     return result;
   }
@@ -752,6 +868,51 @@ dword_result_t XamUserCreateStatsEnumerator_entry(
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCreateStatsEnumerator, kUserProfiles, kSketchy);
+
+dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!xuids_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  auto run = [xuids_ptr](uint32_t& extended_error,
+                         uint32_t& length) -> X_RESULT {
+    const auto user_profile = kernel_state()->user_profile(uint32_t(0));
+    if (user_profile && !static_cast<uint64_t>(xuids_ptr[0])) {
+      xuids_ptr[0] = user_profile->xuid();
+    }
+    extended_error = X_HRESULT_FROM_WIN32(X_ERROR_SUCCESS);
+    length = 0;
+    return X_ERROR_SUCCESS;
+  };
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+
+  uint32_t extended_error, length;
+  return run(extended_error, length);
+}
+DECLARE_XAM_EXPORT1(XamUserLogon, kUserProfiles, kImplemented);
+
+dword_result_t XamUserLogonEx_entry(lpvoid_t profile_ptr, dword_t flags,
+                                    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  auto run = [](uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+    extended_error = X_HRESULT_FROM_WIN32(X_ERROR_SUCCESS);
+    length = 0;
+    return X_ERROR_SUCCESS;
+  };
+
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+    return X_ERROR_IO_PENDING;
+  }
+
+  uint32_t extended_error, length;
+  return run(extended_error, length);
+}
+DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

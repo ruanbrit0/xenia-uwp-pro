@@ -12,6 +12,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/cvar.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/reset_scope.h"
@@ -153,6 +154,7 @@ void PPCTranslator::DumpHIR(GuestFunction* function, PPCHIRBuilder* builder) {
 bool PPCTranslator::Translate(GuestFunction* function,
                               uint32_t debug_info_flags) {
   SCOPE_profile_cpu_f("cpu");
+  XELOGD("PPCTranslator::Translate begin: {:08X}", function->address());
   HirBuilderScope hir_build_scope{builder_.get()};
   // Reset() all caching when we leave.
   xe::make_reset_scope(builder_);
@@ -182,9 +184,14 @@ bool PPCTranslator::Translate(GuestFunction* function,
   }
 
   // Scan the function to find its extents and gather debug data.
+  XELOGD("PPCTranslator::Translate scan begin: {:08X}", function->address());
   if (!scanner_->Scan(function, debug_info.get())) {
+    XELOGE("PPCTranslator::Translate scan failed: {:08X}",
+           function->address());
     return false;
   }
+  XELOGD("PPCTranslator::Translate scan result: {:08X}-{:08X}",
+         function->address(), function->end_address());
 
   // Setup trace data, if needed.
   if (debug_info_flags & DebugInfoFlags::kDebugInfoTraceFunctions) {
@@ -220,8 +227,12 @@ bool PPCTranslator::Translate(GuestFunction* function,
     emit_flags |= PPCHIRBuilder::EMIT_DEBUG_COMMENTS;
   }
   if (!builder_->Emit(function, emit_flags)) {
+    XELOGE("PPCTranslator::Translate emit failed: {:08X}-{:08X}",
+           function->address(), function->end_address());
     return false;
   }
+  XELOGD("PPCTranslator::Translate emit result: {:08X}-{:08X}",
+         function->address(), function->end_address());
 
   // Stash raw HIR.
   if (debug_info_flags & DebugInfoFlags::kDebugInfoDisasmRawHir) {
@@ -232,8 +243,12 @@ bool PPCTranslator::Translate(GuestFunction* function,
 
   // Compile/optimize/etc.
   if (!compiler_->Compile(builder_.get())) {
+    XELOGE("PPCTranslator::Translate compile failed: {:08X}-{:08X}",
+           function->address(), function->end_address());
     return false;
   }
+  XELOGD("PPCTranslator::Translate compile result: {:08X}-{:08X}",
+         function->address(), function->end_address());
 
   // Stash optimized HIR.
   if (debug_info_flags & DebugInfoFlags::kDebugInfoDisasmHir) {
@@ -247,9 +262,13 @@ bool PPCTranslator::Translate(GuestFunction* function,
   // Assemble to backend machine code.
   if (!assembler_->Assemble(function, builder_.get(), debug_info_flags,
                             std::move(debug_info))) {
+    XELOGE("PPCTranslator::Translate assemble failed: {:08X}-{:08X}",
+           function->address(), function->end_address());
     return false;
   }
 
+  XELOGD("PPCTranslator::Translate result: {:08X}-{:08X}",
+         function->address(), function->end_address());
   return true;
 }
 void PPCTranslator::Reset() { builder_->ResetPools(); }

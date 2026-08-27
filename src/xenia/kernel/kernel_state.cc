@@ -657,6 +657,8 @@ void KernelState::UnregisterThread(XThread* thread) {
 }
 
 void KernelState::OnThreadExecute(XThread* thread) {
+  XELOGI("KernelState::OnThreadExecute begin: handle={:08X}",
+         thread->handle());
   auto global_lock = global_critical_region_.Acquire();
 
   // Must be called on executing thread.
@@ -667,6 +669,10 @@ void KernelState::OnThreadExecute(XThread* thread) {
   auto thread_state = thread->thread_state();
   for (auto user_module : user_modules_) {
     if (user_module->is_dll_module() && user_module->entry_point()) {
+      XELOGI(
+          "KernelState::OnThreadExecute DLL_THREAD_ATTACH begin: "
+          "thread={:08X}, module='{}', entry={:08X}",
+          thread->handle(), user_module->name(), user_module->entry_point());
       uint64_t args[] = {
           user_module->handle(),
           2,  // DLL_THREAD_ATTACH
@@ -674,8 +680,13 @@ void KernelState::OnThreadExecute(XThread* thread) {
       };
       processor()->Execute(thread_state, user_module->entry_point(), args,
                            xe::countof(args));
+      XELOGI(
+          "KernelState::OnThreadExecute DLL_THREAD_ATTACH end: "
+          "thread={:08X}, module='{}'",
+          thread->handle(), user_module->name());
     }
   }
+  XELOGI("KernelState::OnThreadExecute end: handle={:08X}", thread->handle());
 }
 
 void KernelState::OnThreadExit(XThread* thread) {

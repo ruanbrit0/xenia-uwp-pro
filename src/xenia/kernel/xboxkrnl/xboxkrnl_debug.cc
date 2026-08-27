@@ -9,6 +9,7 @@
 
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
@@ -19,7 +20,10 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-void DbgBreakPoint_entry() { xe::debugging::Break(); }
+void DbgBreakPoint_entry() {
+  XELOGW("Guest called DbgBreakPoint");
+  xe::debugging::Break();
+}
 DECLARE_XBOXKRNL_EXPORT2(DbgBreakPoint, kDebug, kStub, kImportant);
 
 // https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx
@@ -40,7 +44,11 @@ void HandleSetThreadName(pointer_t<X_EXCEPTION_RECORD> record) {
   auto thread_info =
       reinterpret_cast<X_THREADNAME_INFO*>(&record->exception_information[0]);
 
-  assert_true(thread_info->type == 0x1000);
+  if (thread_info->type != 0x1000) {
+    XELOGW("Ignoring malformed SetThreadName exception: type={:08X}",
+           static_cast<uint32_t>(thread_info->type));
+    return;
+  }
 
   if (!thread_info->name_ptr) {
     XELOGD("SetThreadName called with null name_ptr");
@@ -106,8 +114,14 @@ void HandleCppException(pointer_t<X_EXCEPTION_RECORD> record) {
   // http://www.drdobbs.com/visual-c-exception-handling-instrumentat/184416600
   // http://www.openrce.org/articles/full_view/21
 
-  assert_true(record->number_parameters == 3);
-  assert_true(record->exception_information[0] == 0x19930520);
+  if (record->number_parameters != 3 ||
+      record->exception_information[0] != 0x19930520) {
+    XELOGW(
+        "Ignoring malformed C++ exception: params={}, magic={:08X}",
+        static_cast<uint32_t>(record->number_parameters),
+        static_cast<uint32_t>(record->exception_information[0]));
+    return;
+  }
 
   auto thrown_ptr = record->exception_information[1];
   auto thrown = kernel_memory()->TranslateVirtual(thrown_ptr);
@@ -125,6 +139,9 @@ void HandleCppException(pointer_t<X_EXCEPTION_RECORD> record) {
 }
 
 void RtlRaiseException_entry(pointer_t<X_EXCEPTION_RECORD> record) {
+  XELOGW("Guest called RtlRaiseException: code={:08X}, params={}",
+         static_cast<uint32_t>(record->code),
+         static_cast<uint32_t>(record->number_parameters));
   switch (record->code) {
     case 0x406D1388: {
       HandleSetThreadName(record);
@@ -148,10 +165,15 @@ DECLARE_XBOXKRNL_EXPORT2(RtlRaiseException, kDebug, kStub, kImportant);
 
 void KeBugCheckEx_entry(dword_t code, dword_t param1, dword_t param2,
                         dword_t param3, dword_t param4) {
-  XELOGD("*** STOP: 0x{:08X} (0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X})", code,
+  XELOGE("*** STOP: 0x{:08X} (0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X})", code,
          param1, param2, param3, param4);
   fflush(stdout);
   xe::debugging::Break();
+#if XE_PLATFORM_WINRT
+  if (!xe::debugging::IsDebuggerAttached()) {
+    return;
+  }
+#endif
   assert_always();
 }
 DECLARE_XBOXKRNL_EXPORT2(KeBugCheckEx, kDebug, kStub, kImportant);

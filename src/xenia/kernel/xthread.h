@@ -30,6 +30,7 @@ constexpr fourcc_t kThreadSaveSignature = make_fourcc("THRD");
 class XEvent;
 
 constexpr uint32_t X_CREATE_SUSPENDED = 0x00000001;
+constexpr uint32_t X_CREATE_SYSTEM_THREAD = 0x00000002;
 
 constexpr uint32_t X_TLS_OUT_OF_INDEXES = UINT32_MAX;
 struct XDPC {

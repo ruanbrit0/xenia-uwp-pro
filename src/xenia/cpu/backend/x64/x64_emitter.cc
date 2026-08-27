@@ -22,6 +22,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/memory.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/vec128.h"
 #include "xenia/cpu/backend/x64/x64_backend.h"
@@ -424,6 +425,12 @@ void X64Emitter::EmitTraceUserCallReturn() {}
 
 void X64Emitter::DebugBreak() {
   // TODO(benvanik): notify debugger.
+#if XE_PLATFORM_WINRT
+  if (!xe::debugging::IsDebuggerAttached()) {
+    nop();
+    return;
+  }
+#endif
   db(0xCC);
 }
 
@@ -471,6 +478,11 @@ void X64Emitter::Trap(uint16_t trap_type) {
       break;
     default:
       XELOGW("Unknown trap type {}", trap_type);
+#if XE_PLATFORM_WINRT
+      if (!xe::debugging::IsDebuggerAttached()) {
+        break;
+      }
+#endif
       db(0xCC);
       break;
   }
@@ -478,6 +490,12 @@ void X64Emitter::Trap(uint16_t trap_type) {
 
 void X64Emitter::UnimplementedInstr(const hir::Instr* i) {
   // TODO(benvanik): notify debugger.
+#if XE_PLATFORM_WINRT
+  if (!xe::debugging::IsDebuggerAttached()) {
+    XELOGW("Skipping x64 int3 for unimplemented instruction on WinRT");
+    return;
+  }
+#endif
   db(0xCC);
   assert_always();
 }
