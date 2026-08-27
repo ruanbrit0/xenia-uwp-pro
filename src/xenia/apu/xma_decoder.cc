@@ -55,7 +55,8 @@ extern "C" {
 DEFINE_bool(ffmpeg_verbose, false, "Verbose FFmpeg output (debug and above)",
             "APU");
 
-DEFINE_bool(use_new_decoder, false,
+constexpr bool kDefaultUseNewDecoder = false;
+DEFINE_bool(use_new_decoder, kDefaultUseNewDecoder,
             "Enables usage of new experimental XMA audio decoder.", "APU");
 
 #if XE_PLATFORM_WINRT
@@ -73,6 +74,15 @@ namespace xe {
 namespace apu {
 
 namespace {
+
+bool UseNewDecoder() {
+#if XE_PLATFORM_WINRT
+  // The experimental decoder is unstable on Xbox UWP with Forza Horizon.
+  return false;
+#else
+  return cvars::use_new_decoder;
+#endif
+}
 
 bool UseDedicatedXmaThread() {
 #if XE_PLATFORM_WINRT
@@ -158,7 +168,7 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
 
   // Setup XMA contexts.
   for (int i = 0; i < kContextCount; ++i) {
-    if (cvars::use_new_decoder) {
+    if (UseNewDecoder()) {
       contexts_[i] = new XmaContextNew();
     } else {
       contexts_[i] = new XmaContextOld();

@@ -53,8 +53,13 @@ DEFINE_path(log_file, "", "Logs are written to the given file", "Logging");
 DEFINE_bool(log_to_stdout, true, "Write log output to stdout", "Logging");
 DEFINE_bool(log_to_debugprint, false, "Dump the log to DebugPrint.", "Logging");
 #endif  // XE_PLATFORM_ANDROID
-DEFINE_bool(flush_log, true, "Flush log file after each log line batch.",
-            "Logging");
+#if XE_PLATFORM_WINRT
+constexpr bool kDefaultFlushLog = false;
+#else
+constexpr bool kDefaultFlushLog = true;
+#endif
+DEFINE_bool(flush_log, kDefaultFlushLog,
+            "Flush log file after each log line batch.", "Logging");
 
 DEFINE_uint32(log_mask, 0,
               "Disables specific categorizes for more granular debug logging. "

@@ -19,6 +19,7 @@ namespace xe {
 
 constexpr uint32_t kDbgPrintException = 0x40010006;
 constexpr uint32_t kDbgPrintWideException = 0x4001000A;
+constexpr uint32_t kCppException = 0xE06D7363;
 
 // Handle of the added VectoredExceptionHandler.
 void* veh_handle_ = nullptr;
@@ -40,7 +41,8 @@ LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
 
   // Visual Studio SetThreadName.
   if (exception_code == 0x406D1388 || exception_code == kDbgPrintException ||
-      exception_code == kDbgPrintWideException) {
+      exception_code == kDbgPrintWideException ||
+      exception_code == kCppException) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 

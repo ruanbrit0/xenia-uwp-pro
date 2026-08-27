@@ -838,6 +838,37 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
       }
       if (offset <= data->input_buffer_read_offset ||
           offset > current_input_size * 8) {
+        uint32_t fallback_offset = 0;
+        for (size_t next_packet_idx = static_cast<size_t>(packet_idx) + 1;
+             next_packet_idx < current_input_packet_count; ++next_packet_idx) {
+          auto next_packet = current_input_buffer +
+                             next_packet_idx * kBytesPerPacket;
+          const uint32_t next_packet_offset =
+              xma::GetPacketFrameOffset(next_packet);
+          if (next_packet_offset < kBitsPerHeader ||
+              next_packet_offset > kBitsPerPacket - kBitsPerHeader) {
+            continue;
+          }
+
+          fallback_offset =
+              static_cast<uint32_t>(next_packet_idx * kBitsPerPacket) +
+              next_packet_offset;
+          if (fallback_offset > data->input_buffer_read_offset) {
+            break;
+          }
+          fallback_offset = 0;
+        }
+
+        if (fallback_offset) {
+          XELOGW(
+              "XmaContext {}: Skipping invalid next offset {} to {} "
+              "(current {}, size {})",
+              id(), offset, fallback_offset, data->input_buffer_read_offset,
+              current_input_size * 8);
+          data->input_buffer_read_offset = fallback_offset;
+          continue;
+        }
+
         XELOGW(
             "XmaContext {}: Dropping buffer after invalid next offset {} "
             "(current {}, size {})",

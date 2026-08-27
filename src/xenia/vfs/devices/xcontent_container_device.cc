@@ -9,6 +9,7 @@
 
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
 #include "xenia/vfs/devices/xcontent_devices/stfs_container_device.h"
 #include "xenia/vfs/devices/xcontent_devices/svod_container_device.h"
 
@@ -123,7 +124,21 @@ Entry* XContentContainerDevice::ResolvePath(const std::string_view path) {
   // be in the form:
   // some\PATH.foo
   XELOGFS("StfsContainerDevice::ResolvePath({})", path);
-  return root_entry_->ResolvePath(path);
+  std::string cache_key = xe::utf8::lower_ascii(path);
+  {
+    std::lock_guard<std::mutex> lock(resolve_path_cache_mutex_);
+    auto it = resolve_path_cache_.find(cache_key);
+    if (it != resolve_path_cache_.end()) {
+      return it->second;
+    }
+  }
+
+  Entry* entry = root_entry_->ResolvePath(path);
+  {
+    std::lock_guard<std::mutex> lock(resolve_path_cache_mutex_);
+    resolve_path_cache_.emplace(std::move(cache_key), entry);
+  }
+  return entry;
 }
 
 void XContentContainerDevice::Dump(StringBuffer* string_buffer) {

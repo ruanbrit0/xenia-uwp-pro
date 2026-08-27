@@ -12,7 +12,10 @@
 
 #include <filesystem>
 #include <map>
+#include <mutex>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "xenia/base/math.h"
 #include "xenia/kernel/util/xex2_info.h"
@@ -107,6 +110,8 @@ class XContentContainerDevice : public Device {
   size_t files_total_size_;
   std::unique_ptr<Entry> root_entry_;
   std::unique_ptr<XContentContainerHeader> header_;
+  std::mutex resolve_path_cache_mutex_;
+  std::unordered_map<std::string, Entry*> resolve_path_cache_;
 
  private:
   static XContentContainerHeader* ReadContainerHeader(FILE* host_file);

@@ -212,7 +212,7 @@ void XELOGKERNEL(const char* format, const Args&... args) {
 template <typename... Args>
 void XELOGFS(const char* format, const Args&... args) {
   xe::logging::AppendLogLineFormat(xe::LogSrc::Uncategorized,
-                                   xe::LogLevel::Info, 'F', format, args...);
+                                    xe::LogLevel::Debug, 'F', format, args...);
 }
 
 #else

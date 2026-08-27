@@ -4,7 +4,7 @@ Este documento descreve o fluxo local deste fork UWP. O build desktop herdado do
 
 ## Versao Atual
 
-A base estavel atual e `1.1.12` (`1.1.12.0` no manifesto). Esta versao foi validada no Xbox com um titulo retail de streaming pesado avancando pela introducao sem fechar o emulador. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
+A base estavel atual e `1.1.13` (`1.1.13.0` no manifesto). Esta versao mantem o decoder XMA antigo no UWP e foi a que apresentou melhor resultado pratico ate agora no Xbox com um titulo retail de streaming pesado. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
 
 ## Requisitos
 
@@ -58,7 +58,7 @@ Target -> Local Machine
 O pacote Debug de teste e gerado em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.12.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.13.0_Debug_Test\
 ```
 
 Artefatos em `xenia-canary-uwp/AppPackages/`, `xenia-canary-uwp/x64/` e `xenia-canary-uwp/xenia-canary-uwp/` sao saida local de build e nao devem ser commitados.

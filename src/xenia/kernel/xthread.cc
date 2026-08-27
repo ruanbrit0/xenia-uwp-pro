@@ -669,7 +669,7 @@ void XThread::Execute() {
            handle(), static_cast<uint32_t>(exit_code));
     next_address = 0;
   } catch (const reenter_exception& ree) {
-    XELOGI("XThread reenter requested: handle={:08X}, address={:08X}",
+    XELOGD("XThread reenter requested: handle={:08X}, address={:08X}",
            handle(), ree.address());
     next_address = ree.address();
   } catch (const std::exception& ex) {
@@ -686,7 +686,7 @@ void XThread::Execute() {
   // See XThread::Reenter comments.
   while (next_address != 0) {
     try {
-      XELOGI("XThread execute raw begin: handle={:08X}, address={:08X}",
+      XELOGD("XThread execute raw begin: handle={:08X}, address={:08X}",
              handle(), next_address);
 #if XE_PLATFORM_WINRT
       ExecuteRawProcessorWithSehGuard(kernel_state(), thread_state_,
@@ -694,13 +694,13 @@ void XThread::Execute() {
 #else
       kernel_state()->processor()->ExecuteRaw(thread_state_, next_address);
 #endif
-      XELOGI("XThread execute raw returned: handle={:08X}", handle());
+      XELOGD("XThread execute raw returned: handle={:08X}", handle());
       next_address = 0;
       if (want_exit_code) {
         exit_code = static_cast<int>(thread_state_->context()->r[3]);
       }
     } catch (const reenter_exception& ree) {
-      XELOGI("XThread raw reenter requested: handle={:08X}, address={:08X}",
+      XELOGD("XThread raw reenter requested: handle={:08X}, address={:08X}",
              handle(), ree.address());
       next_address = ree.address();
     } catch (const std::exception& ex) {
