@@ -384,17 +384,12 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
   SCOPE_profile_cpu_f("cpu");
 
   // Attempt to get the function.
-  XELOGI("Processor::Execute resolve begin: thread={}, address={:08X}",
-         thread_state ? thread_state->thread_id() : 0, address);
   auto function = ResolveFunction(address);
   if (!function) {
     // Symbol not found in any module.
     XELOGCPU("Execute({:08X}): failed to find function", address);
-    XELOGE("Processor::Execute resolve failed: address={:08X}", address);
     return false;
   }
-  XELOGI("Processor::Execute resolve result: address={:08X}, function='{}'",
-         address, function->name());
 
   auto context = thread_state->context();
 
@@ -408,16 +403,7 @@ bool Processor::Execute(ThreadState* thread_state, uint32_t address) {
   context->lr = 0xBCBCBCBC;
 
   // Execute the function.
-  XELOGI(
-      "Processor::Execute call begin: thread={}, address={:08X}, stack={:08X}, "
-      "lr={:08X}",
-      thread_state->thread_id(), address, static_cast<uint32_t>(context->r[1]),
-      static_cast<uint32_t>(context->lr));
   auto result = function->Call(thread_state, uint32_t(context->lr));
-  XELOGI(
-      "Processor::Execute call result: thread={}, address={:08X}, result={}, "
-      "r3={:016X}",
-      thread_state->thread_id(), address, result, context->r[3]);
 
   context->lr = previous_lr;
   context->r[1] += 64 + 112;

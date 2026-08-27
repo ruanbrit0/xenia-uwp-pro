@@ -31,6 +31,10 @@ void KeEnableFpuExceptions_entry(
   kthread->fpu_exceptions_on = static_cast<uint32_t>(ctx->r[3]) != 0;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeEnableFpuExceptions, kNone, kStub);
+
+dword_result_t EtxProducerRegister_entry(const ppc_context_t& ctx) { return 0; }
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerRegister, kNone, kStub);
+
 #if 0
 struct __declspec(align(8)) fpucontext_ptr_t {
   char unknown_data[158];

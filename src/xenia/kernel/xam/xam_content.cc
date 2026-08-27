@@ -408,12 +408,6 @@ dword_result_t XamContentOpenFile_entry(dword_t user_index,
   content_data.title_id = kernel_state()->title_id();
 
   auto content_manager = kernel_state()->content_manager();
-  XELOGI(
-      "XamContentOpenFile: user={}, root='{}', path='{}', flags={:08X}, "
-      "overlapped={:08X}",
-      static_cast<uint32_t>(user_index), root_name.value(), path.value(),
-      static_cast<uint32_t>(flags),
-      static_cast<uint32_t>(overlapped_ptr.guest_address()));
 
   auto run = [content_manager, root_name = root_name.value(), content_data,
               flags, disposition_ptr, license_mask_ptr](

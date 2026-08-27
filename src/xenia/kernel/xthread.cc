@@ -48,6 +48,15 @@ namespace xe {
 namespace kernel {
 
 #if XE_PLATFORM_WINRT
+constexpr uint32_t kMsvcCppException = 0xE06D7363;
+
+int FilterNativeProcessorException(uint32_t exception_code) {
+  // Let C++ exceptions, including XThread::Reenter, reach the C++ handlers
+  // below. The SEH guard is only for native faults that would terminate UWP.
+  return exception_code == kMsvcCppException ? EXCEPTION_CONTINUE_SEARCH
+                                             : EXCEPTION_EXECUTE_HANDLER;
+}
+
 uint64_t ExecuteProcessorWithSehGuard(KernelState* kernel_state,
                                       cpu::ThreadState* thread_state,
                                       uint32_t address, uint64_t* args,
@@ -57,7 +66,7 @@ uint64_t ExecuteProcessorWithSehGuard(KernelState* kernel_state,
   __try {
     result = kernel_state->processor()->Execute(thread_state, address, args,
                                                 arg_count);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+  } __except (FilterNativeProcessorException(GetExceptionCode())) {  // NOLINT
     XELOGE(
         "XThread native exception: handle={:08X}, address={:08X}",
         thread_handle, address);
@@ -72,7 +81,7 @@ bool ExecuteRawProcessorWithSehGuard(KernelState* kernel_state,
   bool result = false;
   __try {
     result = kernel_state->processor()->ExecuteRaw(thread_state, address);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {  // NOLINT
+  } __except (FilterNativeProcessorException(GetExceptionCode())) {  // NOLINT
     XELOGE(
         "XThread native raw exception: handle={:08X}, address={:08X}",
         thread_handle, address);

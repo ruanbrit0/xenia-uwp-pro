@@ -633,9 +633,14 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
 
     auto ret = avcodec_send_packet(av_context_, av_packet_);
     if (ret < 0) {
-      XELOGE("XmaContext {}: Error - Sending packet for decoding failed", id());
-      // TODO bail out
-      assert_always();
+      XELOGW("XmaContext {}: Dropping packet after decoder send failed", id());
+      data->parser_error_status = 4;
+      split_frame_len_ = 0;
+      split_frame_len_partial_ = 0;
+      split_frame_padding_start_ = 0;
+      avcodec_flush_buffers(av_context_);
+      SwapInputBuffer(data);
+      return;
     }
     ret = avcodec_receive_frame(av_context_, av_frame_);
     /*
@@ -645,12 +650,15 @@ void XmaContextOld::Decode(XMA_CONTEXT_DATA* data) {
     else
     */
     if (ret < 0) {
-      XELOGE("XmaContext {}: Error - Decoding failed", id());
+      XELOGW("XmaContext {}: Dropping packet after decoding failed", id());
       data->parser_error_status = 4;  // TODO(Gliniak): Find all parsing errors
                                       // and create enumerator from them
+      split_frame_len_ = 0;
+      split_frame_len_partial_ = 0;
+      split_frame_padding_start_ = 0;
+      avcodec_flush_buffers(av_context_);
       SwapInputBuffer(data);
-      assert_always();
-      return;  // TODO bail out
+      return;
     }
     assert_true(ret == 0);
 

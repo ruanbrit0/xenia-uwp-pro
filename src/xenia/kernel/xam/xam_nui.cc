@@ -41,6 +41,11 @@ void XamNuiGetDeviceStatus_entry(pointer_t<X_NUI_DEVICE_STATUS> status_ptr) {
 }
 DECLARE_XAM_EXPORT1(XamNuiGetDeviceStatus, kNone, kStub);
 
+dword_result_t XamNuiCameraTiltSetCallback_entry(const ppc_context_t& ctx) {
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamNuiCameraTiltSetCallback, kNone, kStub);
+
 dword_result_t XamShowNuiTroubleshooterUI_entry(unknown_t unk1, unknown_t unk2,
                                                 unknown_t unk3) {
   // unk1 is 0xFF - possibly user index?

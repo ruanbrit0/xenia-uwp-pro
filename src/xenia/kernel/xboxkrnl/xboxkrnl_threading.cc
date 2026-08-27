@@ -581,11 +581,6 @@ DECLARE_XBOXKRNL_EXPORT1(KeResetEvent, kThreading, kImplemented);
 dword_result_t NtCreateEvent_entry(
     lpdword_t handle_ptr, pointer_t<X_OBJECT_ATTRIBUTES> obj_attributes_ptr,
     dword_t event_type, dword_t initial_state) {
-  XELOGI(
-      "NtCreateEvent begin: attributes={:08X}, type={}, initial_state={}",
-      obj_attributes_ptr.guest_address(), static_cast<uint32_t>(event_type),
-      static_cast<uint32_t>(initial_state));
-
   // Check for an existing timer with the same name.
   auto existing_object =
       LookupNamedObject<XEvent>(kernel_state(), obj_attributes_ptr);
@@ -595,8 +590,6 @@ dword_result_t NtCreateEvent_entry(
         existing_object->RetainHandle();
         *handle_ptr = existing_object->handle();
       }
-      XELOGI("NtCreateEvent existing result: handle={:08X}",
-             existing_object->handle());
       return X_STATUS_OBJECT_NAME_EXISTS;
     } else {
       XELOGE("NtCreateEvent name collision with non-event object");
@@ -615,8 +608,6 @@ dword_result_t NtCreateEvent_entry(
   if (handle_ptr) {
     *handle_ptr = ev->handle();
   }
-  XELOGI("NtCreateEvent result: handle={:08X}, status={:08X}", ev->handle(),
-         X_STATUS_SUCCESS);
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtCreateEvent, kThreading, kImplemented);
@@ -979,12 +970,6 @@ DECLARE_XBOXKRNL_EXPORT3(KeWaitForSingleObject, kThreading, kImplemented,
 uint32_t NtWaitForSingleObjectEx(uint32_t object_handle, uint32_t wait_mode,
                                  uint32_t alertable, uint64_t* timeout_ptr) {
   X_STATUS result = X_STATUS_SUCCESS;
-  uint64_t timeout_for_log = timeout_ptr ? *timeout_ptr : 0u;
-  XELOGI(
-      "NtWaitForSingleObjectEx begin: handle={:08X}, wait_mode={}, "
-      "alertable={}, timeout={:016X}",
-      object_handle, wait_mode, alertable, timeout_for_log);
-
   auto object =
       kernel_state()->object_table()->LookupObject<XObject>(object_handle);
   if (object) {
@@ -999,9 +984,6 @@ uint32_t NtWaitForSingleObjectEx(uint32_t object_handle, uint32_t wait_mode,
   } else {
     result = X_STATUS_INVALID_HANDLE;
   }
-
-  XELOGI("NtWaitForSingleObjectEx result: handle={:08X}, status={:08X}",
-         object_handle, result);
 
   return result;
 }

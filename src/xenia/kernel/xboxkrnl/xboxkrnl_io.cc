@@ -28,11 +28,6 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-static const std::string& GetFilePathForLog(const object_ref<XFile>& file) {
-  static const std::string invalid_path = "<invalid>";
-  return file ? file->entry()->absolute_path() : invalid_path;
-}
-
 static bool IsNullDeviceFile(const object_ref<XFile>& file) {
   return file && dynamic_cast<xe::vfs::NullEntry*>(file->entry()) != nullptr;
 }
@@ -74,46 +69,32 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
 
   // Compute path, possibly attrs relative.
   auto target_path = util::TranslateAnsiString(kernel_memory(), object_name);
-  XELOGI(
-      "NtCreateFile begin: path='{}', root={:08X}, access={:08X}, "
-      "disposition={}, options={:08X}",
-      target_path, static_cast<uint32_t>(object_attrs->root_directory),
-      static_cast<uint32_t>(desired_access),
-      static_cast<uint32_t>(creation_disposition),
-      static_cast<uint32_t>(create_options));
 
   // Enforce that the path is ASCII.
   if (!IsValidPath(target_path, false)) {
     XELOGE("NtCreateFile invalid path: '{}'", target_path);
     return X_STATUS_OBJECT_NAME_INVALID;
   }
-  XELOGI("NtCreateFile path valid: '{}'", target_path);
 
   if (object_attrs->root_directory != 0xFFFFFFFD &&  // ObDosDevices
       object_attrs->root_directory != 0) {
-    XELOGI("NtCreateFile resolving root handle: {:08X}",
-           static_cast<uint32_t>(object_attrs->root_directory));
     auto root_file = kernel_state()->object_table()->LookupObject<XFile>(
         object_attrs->root_directory);
     assert_not_null(root_file);
     assert_true(root_file->type() == XObject::Type::File);
 
     root_entry = root_file->entry();
-    XELOGI("NtCreateFile root path: '{}'", root_entry->absolute_path());
   }
 
   // Attempt open (or create).
   vfs::File* vfs_file;
   vfs::FileAction file_action = vfs::FileAction::kDoesNotExist;
-  XELOGI("NtCreateFile OpenFile begin: path='{}'", target_path);
   X_STATUS result = kernel_state()->file_system()->OpenFile(
       root_entry, target_path,
       vfs::FileDisposition((uint32_t)creation_disposition), desired_access,
       (create_options & CreateOptions::FILE_DIRECTORY_FILE) != 0,
       (create_options & CreateOptions::FILE_NON_DIRECTORY_FILE) != 0, &vfs_file,
       &file_action);
-  XELOGI("NtCreateFile OpenFile result: path='{}', status={:08X}, action={}",
-         target_path, result, static_cast<uint32_t>(file_action));
   object_ref<XFile> file = nullptr;
 
   X_HANDLE handle = X_INVALID_HANDLE_VALUE;
@@ -122,13 +103,10 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
     bool synchronous =
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_ALERT) ||
         (create_options & CreateOptions::FILE_SYNCHRONOUS_IO_NONALERT);
-    XELOGI("NtCreateFile creating XFile: path='{}', synchronous={}",
-           target_path, synchronous);
     file = object_ref<XFile>(new XFile(kernel_state(), vfs_file, synchronous));
 
     // Handle ref is incremented, so return that.
     handle = file->handle();
-    XELOGI("NtCreateFile created XFile handle: {:08X}", handle);
   }
 
   if (io_status_block) {
@@ -137,10 +115,6 @@ dword_result_t NtCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
   }
 
   *handle_out = handle;
-  XELOGI(
-      "NtCreateFile result: path='{}', status={:08X}, action={}, "
-      "handle={:08X}",
-      target_path, result, static_cast<uint32_t>(file_action), handle);
 
   return result;
 }
@@ -174,15 +148,6 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
   if (!file) {
     result = X_STATUS_INVALID_HANDLE;
   }
-  auto file_path = GetFilePathForLog(file);
-  auto byte_offset =
-      byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : UINT64_MAX;
-  XELOGI(
-      "NtReadFile begin: handle={:08X}, path='{}', device='{}', "
-      "null={}, offset={:016X}, length={}",
-      static_cast<uint32_t>(file_handle), file_path,
-      file ? file->device()->name() : "<invalid>", IsNullDeviceFile(file),
-      byte_offset, static_cast<uint32_t>(buffer_length));
 
   if (XSUCCEEDED(result)) {
     if (true || file->is_synchronous()) {
@@ -209,7 +174,7 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
       }
 
       if (!file->is_synchronous() && !IsNullDeviceFile(file) &&
-          result != X_STATUS_END_OF_FILE) {
+          (XSUCCEEDED(result) || result == X_STATUS_END_OF_FILE)) {
         result = X_STATUS_PENDING;
       }
 
@@ -246,8 +211,6 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
   if (ev && signal_event) {
     ev->Set(0, false);
   }
-  XELOGI("NtReadFile result: handle={:08X}, status={:08X}",
-         static_cast<uint32_t>(file_handle), result);
 
   return result;
 }
@@ -358,15 +321,6 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
   if (!file) {
     result = X_STATUS_INVALID_HANDLE;
   }
-  auto file_path = GetFilePathForLog(file);
-  auto byte_offset =
-      byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : UINT64_MAX;
-  XELOGI(
-      "NtWriteFile begin: handle={:08X}, path='{}', device='{}', "
-      "null={}, offset={:016X}, length={}",
-      static_cast<uint32_t>(file_handle), file_path,
-      file ? file->device()->name() : "<invalid>", IsNullDeviceFile(file),
-      byte_offset, static_cast<uint32_t>(buffer_length));
 
   // Execute write.
   if (XSUCCEEDED(result)) {
@@ -421,8 +375,6 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
   if (ev && signal_event) {
     ev->Set(0, false);
   }
-  XELOGI("NtWriteFile result: handle={:08X}, status={:08X}",
-         static_cast<uint32_t>(file_handle), result);
 
   return result;
 }
@@ -591,16 +543,10 @@ dword_result_t NtFlushBuffersFile_entry(
     dword_t file_handle, pointer_t<X_IO_STATUS_BLOCK> io_status_block_ptr) {
   auto result = X_STATUS_SUCCESS;
 
-  XELOGI("NtFlushBuffersFile begin: handle={:08X}",
-         static_cast<uint32_t>(file_handle));
-
   if (io_status_block_ptr) {
     io_status_block_ptr->status = result;
     io_status_block_ptr->information = 0;
   }
-
-  XELOGI("NtFlushBuffersFile result: handle={:08X}, status={:08X}",
-         static_cast<uint32_t>(file_handle), result);
 
   return result;
 }

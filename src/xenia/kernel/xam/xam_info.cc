@@ -217,6 +217,14 @@ void XCustomRegisterDynamicActions_entry() {
 }
 DECLARE_XAM_EXPORT1(XCustomRegisterDynamicActions, kNone, kStub);
 
+dword_result_t XamXStudioRequest_entry(const ppc_context_t& ctx) { return 0; }
+DECLARE_XAM_EXPORT2(XamXStudioRequest, kNone, kStub, kHighFrequency);
+
+dword_result_t XamGetActiveDashAppInfo_entry(const ppc_context_t& ctx) {
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamGetActiveDashAppInfo, kNone, kStub);
+
 dword_result_t XGetAVPack_entry() {
   // Value from
   // https://github.com/Free60Project/libxenon/blob/920146f/libxenon/drivers/xenos/xenos_videomodes.h
