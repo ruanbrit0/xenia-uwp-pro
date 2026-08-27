@@ -23,7 +23,7 @@
 - Build UWP local validado com Visual Studio 2022 Community `17.14.39` e SDK Windows `10.0.22621.0`.
 - MSBuild direto: `& "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" "xenia-canary-uwp\xenia-canary-uwp.vcxproj" /nologo /m /v:m /p:Configuration=Debug /p:Platform=x64`.
 - Para rodar no Visual Studio: abrir `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecionar `Debug | x64 | Local Machine`, definir `xenia-canary-uwp` como startup project e pressionar `F5`.
-- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.11.0_Debug_Test/`.
+- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.12.0_Debug_Test/`.
 - O projeto espera `Microsoft.Windows.CppWinRT.2.0.250303.1` em `build/packages/`; restaure com NuGet se faltar.
 - As referencias UWP mapeiam `Debug|x64` para dependencias Premake `Debug Windows-UWP|x64`; nao troque isso para `Debug Windows|x64`, pois UWP precisa de `XE_PLATFORM_WINRT=1`.
 - O Debug UWP usa runtime Release compativel com as libs geradas (`/MD`, `_ITERATOR_DEBUG_LEVEL=0`); mudar para runtime Debug reintroduz `LNK2038`.
@@ -32,6 +32,8 @@
 
 ## Gotchas De Codigo UWP
 - `XE_PLATFORM_WINRT` deve ficar desligado por padrao em `src/xenia/base/platform.h` e ser ligado apenas pela plataforma Premake `Windows-UWP`.
+- `src/xenia/vfs/devices/xcontent_container_file.cc` protege `Seek` + `fread` com mutex por `FILE*`; nao remova isso, pois evita corrida em streaming XContent/SVOD.
+- No UWP, `src/xenia/apu/xma_decoder.cc` nao usa thread dedicada de XMA por padrao, e `xma_context_old.cc` descarta frames/offsets invalidos de forma controlada. Nao reative a thread dedicada no UWP sem validar em Xbox.
 - `src/xenia/ui/imgui_drawer.cc` deve usar somente a API nova de input ImGui (`io.AddKeyEvent`); nao reintroduza `io.KeyMap`, pois isso causa assert em runtime.
 - `src/xenia/ui/file_picker_win.cc` precisa da definicao completa de `Win32Window`; mantenha o include de `xenia/ui/window_win.h` se o cast para `Win32Window` continuar ali.
 
@@ -56,6 +58,7 @@
 
 ## Artefatos Locais
 - `log/` pode existir apenas como anotacao local; nao commitar sem pedido explicito.
+- `logsxbox/` e pasta local para logs/configs copiados do Xbox; fica ignorada no Git e nao deve ser commitada.
 - `xenia-canary-uwp/x64/`, `xenia-canary-uwp/xenia-canary-uwp/` e `xenia-canary-uwp/AppPackages/` sao artefatos de build; nao commitar sem intencao explicita.
 
 ## Fluxo de commit e release (obrigatorio)

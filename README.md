@@ -6,7 +6,9 @@ Xenia Canary UWP is an unofficial fork of Xenia Canary to support UWP and the Xb
 
 Este repositorio mantem o app UWP em `xenia-canary-uwp/` em cima do Xenia Canary, com ajustes especificos para rodar em UWP/Xbox. O foco atual e estabilizar inicializacao, acesso a arquivos, perfil de usuario, montagem de conteudo/cache e chamadas de kernel usadas por titulos retail.
 
-O port ainda e experimental. Alguns jogos podem abrir menus e ainda travar, congelar ou ficar em loading durante a entrada no gameplay.
+A base estavel atual e `1.1.12` (`1.1.12.0` no manifesto). Ela inclui sincronizacao de leitura em XContent/SVOD e tratamento mais resiliente de XMA no UWP para reduzir fechamentos durante streaming de conteudo.
+
+O port ainda e experimental. Mesmo quando titulos retail avancam alem da introducao, ainda podem ocorrer lags, FPS baixo, travamentos, congelamentos ou loading preso durante a entrada no gameplay.
 
 ## Como Rodar Localmente
 
@@ -27,7 +29,7 @@ Build UWP direto por MSBuild:
 O pacote gerado fica em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.11.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.12.0_Debug_Test\
 ```
 
 Guia completo de setup, build, pacote e deploy UWP/Xbox: `docs/uwp.md`.

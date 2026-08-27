@@ -2,6 +2,10 @@
 
 Este documento descreve o fluxo local deste fork UWP. O build desktop herdado do Xenia Canary continua documentado em `docs/building.md`.
 
+## Versao Atual
+
+A base estavel atual e `1.1.12` (`1.1.12.0` no manifesto). Esta versao foi validada no Xbox com um titulo retail de streaming pesado avancando pela introducao sem fechar o emulador. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
+
 ## Requisitos
 
 - Windows 10/11 x64.
@@ -54,7 +58,7 @@ Target -> Local Machine
 O pacote Debug de teste e gerado em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.11.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.12.0_Debug_Test\
 ```
 
 Artefatos em `xenia-canary-uwp/AppPackages/`, `xenia-canary-uwp/x64/` e `xenia-canary-uwp/xenia-canary-uwp/` sao saida local de build e nao devem ser commitados.
@@ -79,6 +83,8 @@ O manifesto nao usa `runFullTrust`. Ele ainda declara `broadFileSystemAccess`, `
 - Fluxo de inicializacao UWP e selecao/resolucao de caminhos pelo frontend.
 - Protecoes para APIs sensiveis em WinRT, incluindo debug break, excecoes e chamadas que nao se comportam como Win32 desktop.
 - Ajustes de montagem VFS para conteudo instalado e caches locais.
+- Leituras XContent/SVOD protegidas por lock por arquivo, evitando corrida em `Seek` + `fread` quando o mesmo `FILE*` e compartilhado.
+- No UWP, XMA nao usa thread dedicada por padrao; frames/offsets invalidos no decoder antigo sao tratados como drop controlado com flush do FFmpeg.
 - Implementacoes e stubs adicionais em `xam`/`xboxkrnl` para reduzir falhas de boot.
 - Melhorias em resolucao de conteudo, arquivos, perfil de usuario, entrada e chamadas de I/O usadas por jogos retail.
 
@@ -97,3 +103,5 @@ Testes padrao, quando o ambiente local estiver confiavel:
 ```
 
 Para validar UWP, a verificacao mais importante e instalar o pacote no alvo real e coletar logs do app. Se o log parar logo depois do `CONFIG DUMP`, confira o `log_level` da configuracao local antes de concluir que nao houve falha em runtime.
+
+Logs locais copiados do Xbox podem ficar em `logsxbox/`. Essa pasta e ignorada pelo Git e nao deve ser commitada.

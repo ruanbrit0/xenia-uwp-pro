@@ -68,6 +68,7 @@ obj/
 
 npm-debug.log
 private/
+/logsxbox/
 *.trace
 imgui.ini
 *.log
