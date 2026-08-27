@@ -3,7 +3,13 @@
 #include "UWPUtil.h"
 #include "WinRTKeyboard.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <fstream>
+#include <mutex>
+#include <sstream>
+#include <thread>
 
 #include "windowed_app_context_uwp.h"
 #include "surface_uwp.h"
@@ -40,6 +46,10 @@ static Emulator* s_emulator;
 static std::vector<std::string> s_paths;
 static std::vector<std::tuple<std::string, std::string>> s_games;
 static std::vector<std::string> s_scanned_paths;
+static std::mutex s_game_list_mutex;
+static std::atomic<uint64_t> s_scan_generation{0};
+static std::atomic<bool> s_scanning_game_paths{false};
+static std::atomic<uint64_t> s_scan_games_found{0};
 
 void UWP::StartXenia() {
   app_context = std::make_unique<ui::UWPWindowedAppContext>();
@@ -99,11 +109,17 @@ void UWP::UpdateImGuiIO() {
   io.AddKeyEvent(ImGuiKey_GamepadDpadDown, state.gamepad.buttons & X_INPUT_GAMEPAD_DPAD_DOWN);
 }
 
-void RecurseFolderForGames(std::string path) {
+void RecurseFolderForGames(
+    std::string path, uint64_t generation,
+    std::vector<std::tuple<std::string, std::string>>& games) {
   try {
     for (auto file : std::filesystem::directory_iterator(path)) {
+      if (generation != s_scan_generation.load()) {
+        return;
+      }
+
       if (file.is_directory() && file.path().string() != path) {
-        RecurseFolderForGames(file.path().string());
+        RecurseFolderForGames(file.path().string(), generation, games);
         continue;
       }
 
@@ -121,14 +137,16 @@ void RecurseFolderForGames(std::string path) {
             filename = file.path().stem().string();
           }
 
-          s_games.push_back({file.path().string(), filename});
+          games.push_back({file.path().string(), filename});
+          s_scan_games_found.store(games.size());
           break;
         }
         case xe::Emulator::FileSignatureType::CON:
         case xe::Emulator::FileSignatureType::PIRS:
         case xe::Emulator::FileSignatureType::ZAR: {
           std::string filename = file.path().stem().string();
-          s_games.push_back({file.path().string(), filename});
+          games.push_back({file.path().string(), filename});
+          s_scan_games_found.store(games.size());
           break;
         }
         case xe::Emulator::FileSignatureType::LIVE: {
@@ -145,7 +163,8 @@ void RecurseFolderForGames(std::string path) {
             if (c == 0) break;
           }
 
-          s_games.push_back({file.path().string(), data});
+          games.push_back({file.path().string(), data});
+          s_scan_games_found.store(games.size());
 
           in.close();
         }
@@ -159,46 +178,121 @@ void RecurseFolderForGames(std::string path) {
 }
 
 void UWP::RefreshPaths() {
-  s_paths.clear();
-  s_games.clear();
-
-  RecurseFolderForGames(UWP::GetLocalCache());
+  uint64_t generation = ++s_scan_generation;
+  std::string local_cache = UWP::GetLocalCache();
+  std::vector<std::string> paths;
 
   if (!cvars::gamepaths.empty()) {
-    std::stringstream ss (cvars::gamepaths);
+    std::stringstream ss(cvars::gamepaths);
     std::string item;
     while (std::getline(ss, item, ';')) {
       if (item.empty()) continue;
-
-      RecurseFolderForGames(item);
-      s_paths.push_back(item);
+      paths.push_back(item);
     }
   }
 
-  std::sort(s_games.begin(), s_games.end(), [](auto& first, auto& second) {
-    return std::get<1>(first) < std::get<1>(second);
-  });
+  {
+    std::lock_guard<std::mutex> lock(s_game_list_mutex);
+    s_paths = paths;
+    s_games.clear();
+  }
+
+  s_scanning_game_paths.store(true);
+  s_scan_games_found.store(0);
+  XELOGI("UWP RefreshPaths started: {} paths", paths.size());
+
+  try {
+    std::thread([generation, local_cache, paths = std::move(paths)]() {
+      try {
+        std::vector<std::tuple<std::string, std::string>> games;
+        XELOGI("UWP game scan begin");
+        RecurseFolderForGames(local_cache, generation, games);
+
+        for (const auto& path : paths) {
+          if (generation != s_scan_generation.load()) {
+            XELOGI("UWP game scan cancelled");
+            return;
+          }
+          XELOGI("UWP game scan path begin: '{}'", path);
+          RecurseFolderForGames(path, generation, games);
+          XELOGI("UWP game scan path end: '{}'", path);
+        }
+
+        std::sort(games.begin(), games.end(), [](auto& first, auto& second) {
+          return std::get<1>(first) < std::get<1>(second);
+        });
+
+        size_t game_count = 0;
+        {
+          std::lock_guard<std::mutex> lock(s_game_list_mutex);
+          if (generation != s_scan_generation.load()) {
+            XELOGI("UWP game scan result discarded");
+            return;
+          }
+          s_games = std::move(games);
+          game_count = s_games.size();
+        }
+
+        s_scan_games_found.store(game_count);
+        s_scanning_game_paths.store(false);
+        XELOGI("UWP game scan end: {} games", game_count);
+      } catch (const std::exception& e) {
+        if (generation == s_scan_generation.load()) {
+          s_scanning_game_paths.store(false);
+        }
+        XELOGE("UWP game scan failed: {}", e.what());
+      } catch (...) {
+        if (generation == s_scan_generation.load()) {
+          s_scanning_game_paths.store(false);
+        }
+        XELOGE("UWP game scan failed with unknown exception");
+      }
+    }).detach();
+  } catch (const std::exception& e) {
+    s_scanning_game_paths.store(false);
+    XELOGE("UWP failed to start game scan: {}", e.what());
+  }
 }
 
 std::vector<std::tuple<std::string, std::string>> UWP::GetGames() {
+  std::lock_guard<std::mutex> lock(s_game_list_mutex);
   return s_games;
 }
 
 void UWP::SetGamePaths(std::vector<std::string> paths) {
-  s_paths.clear();
-  s_paths.insert(s_paths.end(), paths.begin(), paths.end());
+  XELOGI("UWP SetGamePaths begin: {} paths", paths.size());
   std::stringstream ss;
-  for (auto p : s_paths) {
+  for (auto p : paths) {
     ss << p << ";";
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(s_game_list_mutex);
+    s_paths = paths;
   }
 
   auto cpaths = dynamic_cast<cvar::ConfigVar<std::string>*>(
       cvar::ConfigVars->find("gamepaths")->second);
-    cpaths->SetConfigValue(ss.str());
+  cpaths->SetConfigValue(ss.str());
   config::SaveConfig();
+  XELOGI("UWP SetGamePaths end");
   RefreshPaths();
 }
 
-std::vector<std::string> UWP::GetPaths() { 
+std::vector<std::string> UWP::GetPaths() {
+  std::lock_guard<std::mutex> lock(s_game_list_mutex);
   return s_paths;
+}
+
+bool UWP::IsScanningGamePaths() { return s_scanning_game_paths.load(); }
+
+std::string UWP::GetGameScanStatus() {
+  if (!s_scanning_game_paths.load()) {
+    return "Idle";
+  }
+
+  std::stringstream status;
+  status << "Scanning game paths: " << s_scan_games_found.load()
+         << " games found";
+  return status.str();
 }

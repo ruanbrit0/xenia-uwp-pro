@@ -1,10 +1,12 @@
 #pragma once
 
-#include <string>
 #include <filesystem>
+#include <string>
+#include <tuple>
+#include <vector>
 
 namespace winrt {
-class fire_and_forget;
+struct fire_and_forget;
 }
 
 namespace xe {
@@ -23,4 +25,6 @@ void RefreshPaths();
 std::vector<std::tuple<std::string, std::string>> GetGames();
 std::vector<std::string> GetPaths();
 void SetGamePaths(std::vector<std::string> paths);
+bool IsScanningGamePaths();
+std::string GetGameScanStatus();
 }

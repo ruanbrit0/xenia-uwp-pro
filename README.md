@@ -27,7 +27,7 @@ Build UWP direto por MSBuild:
 O pacote gerado fica em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.8.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.9.0_Debug_Test\
 ```
 
 Guia completo de setup, build, pacote e deploy UWP/Xbox: `docs/uwp.md`.

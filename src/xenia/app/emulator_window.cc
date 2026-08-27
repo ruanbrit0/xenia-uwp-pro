@@ -9,6 +9,7 @@
 
 #include "xenia/app/emulator_window.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -1864,9 +1865,20 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   if (ImGui::Begin("Frontend", nullptr, flags)) {
     if (ImGui::BeginTabBar("tabs")) {
       if (ImGui::BeginTabItem("Game List", nullptr)) {
-        ImGui::Text("Total Games: %d", UWP::GetGames().size());
+        auto games = UWP::GetGames();
+        ImGui::Text("Total Games: %d%s", static_cast<int>(games.size()),
+                    UWP::IsScanningGamePaths() ? " (Scanning...)" : "");
+        ImGui::TextWrapped("%s", UWP::GetGameScanStatus().c_str());
         if (ImGui::BeginListBox("##gamelist", ImVec2(-1, -1))) {
-          for (const auto& set : UWP::GetGames()) {
+          if (games.empty()) {
+            ImGui::TextDisabled(
+                UWP::IsScanningGamePaths()
+                    ? "Scanning selected folders..."
+                    : "No games found. Add a folder in Paths or refresh the "
+                      "list.");
+          }
+
+          for (const auto& set : games) {
             std::string path, filename;
             std::tie(path, filename) = set;
 
@@ -2344,41 +2356,56 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
           ImGui::EndListBox();
         }
 
-        if (selectedPath == "") {
+        const bool remove_path_disabled = selectedPath == "";
+        if (remove_path_disabled) {
           ImGui::BeginDisabled();
         }
 
         if (ImGui::Button("Remove Path")) {
           if (selectedPath != "") {
+            XELOGI("UWP Remove Path clicked: path='{}'", selectedPath);
             auto paths = UWP::GetPaths();
             paths.erase(std::remove(paths.begin(), paths.end(), selectedPath),
                         paths.end());
             UWP::SetGamePaths(paths);
+            XELOGI("UWP Remove Path removed");
             selectedPath = "";
           }
         }
 
-        if (selectedPath == "") {
+        if (remove_path_disabled) {
           ImGui::EndDisabled();
         }
 
         ImGui::SameLine();
         if (ImGui::Button("Add Path")) {
+          XELOGI("UWP Add Path clicked");
           imgui_drawer()->SetIgnoreInput(true);
           UWP::SelectFolder([this](std::string path) {
+            XELOGI("UWP Add Path picker returned: path='{}'", path);
+            imgui_drawer()->SetIgnoreInput(false);
+
             if (path != "") {
-              if (!UWP::TestPathPermissions(path)) {
-                show_path_warning_ = true;
-              } else {
-                auto paths = UWP::GetPaths();
+              auto paths = UWP::GetPaths();
+              if (std::find(paths.begin(), paths.end(), path) ==
+                  paths.end()) {
                 paths.push_back(path);
                 UWP::SetGamePaths(paths);
               }
+              selectedPath = path;
             }
-
-            imgui_drawer()->SetIgnoreInput(false);
           });
         }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh List")) {
+          XELOGI("UWP Refresh List clicked");
+          UWP::RefreshPaths();
+        }
+
+        ImGui::TextWrapped(
+            "Game List updates automatically after adding a folder. Use "
+            "Refresh List to rescan manually.");
 
         ImGui::Spacing();
         ImGui::Separator();

@@ -23,7 +23,7 @@
 - Build UWP local validado com Visual Studio 2022 Community `17.14.39` e SDK Windows `10.0.22621.0`.
 - MSBuild direto: `& "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" "xenia-canary-uwp\xenia-canary-uwp.vcxproj" /nologo /m /v:m /p:Configuration=Debug /p:Platform=x64`.
 - Para rodar no Visual Studio: abrir `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecionar `Debug | x64 | Local Machine`, definir `xenia-canary-uwp` como startup project e pressionar `F5`.
-- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.8.0_Debug_Test/`.
+- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.9.0_Debug_Test/`.
 - O projeto espera `Microsoft.Windows.CppWinRT.2.0.250303.1` em `build/packages/`; restaure com NuGet se faltar.
 - As referencias UWP mapeiam `Debug|x64` para dependencias Premake `Debug Windows-UWP|x64`; nao troque isso para `Debug Windows|x64`, pois UWP precisa de `XE_PLATFORM_WINRT=1`.
 - O Debug UWP usa runtime Release compativel com as libs geradas (`/MD`, `_ITERATOR_DEBUG_LEVEL=0`); mudar para runtime Debug reintroduz `LNK2038`.

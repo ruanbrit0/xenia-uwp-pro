@@ -463,7 +463,8 @@ void InitializeLogging(const std::string_view app_name) {
     logger_->AddLogSink(std::make_unique<FileLogSink>(stdout, false));
   }
 
-  if (cvars::log_to_debugprint || XE_PLATFORM_WINRT) {
+  if (cvars::log_to_debugprint ||
+      (XE_PLATFORM_WINRT && debugging::IsDebuggerAttached())) {
     logger_->AddLogSink(std::make_unique<DebugPrintLogSink>());
   }
 #endif  // XE_PLATFORM_ANDROID

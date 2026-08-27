@@ -437,19 +437,16 @@ X_STATUS Emulator::MountPath(const std::filesystem::path& path,
 
 Emulator::FileSignatureType GetFileSignature(
     const std::filesystem::path& path) {
-  XELOGI("GetFileSignature begin: {}", xe::path_to_utf8(path));
   FILE* file = xe::filesystem::OpenFile(path, "rb");
 
   if (!file) {
-    XELOGE("GetFileSignature failed to open file");
     return Emulator::FileSignatureType::Unknown;
   }
 
   uint64_t file_size = 0;
   try {
     file_size = std::filesystem::file_size(path);
-  } catch (const std::exception& e) {
-    XELOGE("GetFileSignature failed to query file size: {}", e.what());
+  } catch (const std::exception&) {
     fclose(file);
     return Emulator::FileSignatureType::Unknown;
   }
@@ -457,14 +454,12 @@ Emulator::FileSignatureType GetFileSignature(
 
   if (file_size < header_size) {
     fclose(file);
-    XELOGE("GetFileSignature file is too small: {} bytes", file_size);
     return Emulator::FileSignatureType::Unknown;
   }
 
   char file_magic[header_size];
   if (fread_s(file_magic, sizeof(file_magic), header_size, 1, file) != 1) {
     fclose(file);
-    XELOGE("GetFileSignature failed to read header");
     return Emulator::FileSignatureType::Unknown;
   }
 
@@ -500,17 +495,14 @@ Emulator::FileSignatureType GetFileSignature(
 
   file = xe::filesystem::OpenFile(path, "rb");
   if (!file) {
-    XELOGE("GetFileSignature failed to reopen file for footer check");
     return Emulator::FileSignatureType::Unknown;
   }
   if (!xe::filesystem::Seek(file, -header_size, SEEK_END)) {
     fclose(file);
-    XELOGE("GetFileSignature failed to seek footer");
     return Emulator::FileSignatureType::Unknown;
   }
   if (fread_s(file_magic, sizeof(file_magic), header_size, 1, file) != 1) {
     fclose(file);
-    XELOGE("GetFileSignature failed to read footer");
     return Emulator::FileSignatureType::Unknown;
   }
   fclose(file);
@@ -526,20 +518,13 @@ Emulator::FileSignatureType GetFileSignature(
   std::unique_ptr<vfs::Device> device =
       std::make_unique<vfs::DiscImageDevice>("", path);
 
-  XELOGI("Checking for XISO");
-
   try {
     if (device->Initialize()) {
-      XELOGI("GetFileSignature detected XISO");
       return Emulator::FileSignatureType::XISO;
     }
-  } catch (const std::exception& e) {
-    XELOGE("GetFileSignature XISO check failed with exception: {}", e.what());
   } catch (...) {
-    XELOGE("GetFileSignature XISO check failed with unknown exception");
   }
 
-  XELOGI("GetFileSignature result: Unknown");
   return Emulator::FileSignatureType::Unknown;
 }
 

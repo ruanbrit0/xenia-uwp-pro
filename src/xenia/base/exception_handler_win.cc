@@ -17,6 +17,9 @@
 
 namespace xe {
 
+constexpr uint32_t kDbgPrintException = 0x40010006;
+constexpr uint32_t kDbgPrintWideException = 0x4001000A;
+
 // Handle of the added VectoredExceptionHandler.
 void* veh_handle_ = nullptr;
 // Handle of the added VectoredContinueHandler.
@@ -32,8 +35,12 @@ constexpr size_t kMaxHandlerCount = 8;
 std::pair<ExceptionHandler::Handler, void*> handlers_[kMaxHandlerCount];
 
 LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
+  const uint32_t exception_code =
+      static_cast<uint32_t>(ex_info->ExceptionRecord->ExceptionCode);
+
   // Visual Studio SetThreadName.
-  if (ex_info->ExceptionRecord->ExceptionCode == 0x406D1388) {
+  if (exception_code == 0x406D1388 || exception_code == kDbgPrintException ||
+      exception_code == kDbgPrintWideException) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
@@ -76,7 +83,7 @@ LONG CALLBACK ExceptionHandlerCallback(PEXCEPTION_POINTERS ex_info) {
       // Unknown/unhandled type.
 #if XE_PLATFORM_WINRT
       XELOGE("Unhandled Windows exception: code={:08X}, rip={:016X}",
-             static_cast<uint32_t>(ex_info->ExceptionRecord->ExceptionCode),
+             exception_code,
              static_cast<uint64_t>(ex_info->ContextRecord->Rip));
 #endif
       return EXCEPTION_CONTINUE_SEARCH;
