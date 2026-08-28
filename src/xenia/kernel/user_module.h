@@ -66,6 +66,16 @@ class UserModule : public XModule {
 
   bool is_executable() const { return processor_module_->is_executable(); }
   bool is_dll_module() const { return is_dll_module_; }
+  bool dll_process_attached() const { return dll_process_attached_; }
+  bool dll_process_attach_pending() const {
+    return dll_process_attach_pending_;
+  }
+  void set_dll_process_attached(bool attached) {
+    dll_process_attached_ = attached;
+  }
+  void set_dll_process_attach_pending(bool pending) {
+    dll_process_attach_pending_ = pending;
+  }
 
   uint32_t entry_point() const { return entry_point_; }
   uint32_t stack_size() const { return stack_size_; }
@@ -108,6 +118,7 @@ class UserModule : public XModule {
 
  private:
   void CalculateHash();
+  X_STATUS LoadImportModules();
 
   std::string name_;
   std::string path_;
@@ -117,6 +128,9 @@ class UserModule : public XModule {
   ModuleFormat module_format_ = kModuleFormatUndefined;
 
   bool is_dll_module_ = false;
+  bool dll_process_attached_ = false;
+  bool dll_process_attach_pending_ = false;
+  bool load_continue_active_ = false;
   uint32_t entry_point_ = 0;
   uint32_t stack_size_ = 0;
   uint32_t workspace_size_ = 384 * 1024;

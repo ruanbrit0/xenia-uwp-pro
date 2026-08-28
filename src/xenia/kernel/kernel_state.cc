@@ -9,7 +9,9 @@
 
 #include "xenia/kernel/kernel_state.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
@@ -456,20 +458,35 @@ object_ref<UserModule> KernelState::LoadUserModule(
 
 X_RESULT KernelState::FinishLoadingUserModule(
     const object_ref<UserModule> module, bool call_entry) {
+  bool already_finished = module->guest_xex_header() != 0;
+
   // TODO(Gliniak): Apply custom patches here
   X_RESULT result = module->LoadContinue();
   if (XFAILED(result)) {
     return result;
   }
-  module->Dump();
-  emulator_->patcher()->ApplyPatchesForTitle(memory_, module->title_id(),
-                                             module->hash());
-  emulator_->on_patch_apply();
-  if (module->xex_module()) {
-    module->xex_module()->Precompile();
+
+  if (!already_finished) {
+    module->Dump();
+    emulator_->patcher()->ApplyPatchesForTitle(memory_, module->title_id(),
+                                               module->hash());
+    emulator_->on_patch_apply();
+    if (module->xex_module()) {
+      module->xex_module()->Precompile();
+    }
   }
 
-  if (module->is_dll_module() && module->entry_point() && call_entry) {
+  bool needs_process_attach = module->is_dll_module() &&
+                              module->entry_point() &&
+                              !module->dll_process_attached();
+  if (needs_process_attach && call_entry) {
+    XThread* current_thread = XThread::IsInThread() ? XThread::GetCurrentThread()
+                                                    : nullptr;
+    if (!current_thread || !current_thread->is_guest_thread()) {
+      module->set_dll_process_attach_pending(true);
+      return result;
+    }
+
     // Call DllMain(DLL_PROCESS_ATTACH):
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
     uint64_t args[] = {
@@ -477,9 +494,11 @@ X_RESULT KernelState::FinishLoadingUserModule(
         1,  // DLL_PROCESS_ATTACH
         0,  // 0 because always dynamic
     };
-    auto thread_state = XThread::GetCurrentThread()->thread_state();
+    auto thread_state = current_thread->thread_state();
     processor()->Execute(thread_state, module->entry_point(), args,
                          xe::countof(args));
+    module->set_dll_process_attached(true);
+    module->set_dll_process_attach_pending(false);
   }
   return result;
 }
@@ -539,7 +558,8 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
                                    bool call_entry) {
   auto global_lock = global_critical_region_.Acquire();
 
-  if (module->is_dll_module() && module->entry_point() && call_entry) {
+  if (module->is_dll_module() && module->entry_point() && call_entry &&
+      module->dll_process_attached()) {
     // Call DllMain(DLL_PROCESS_DETACH):
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
     uint64_t args[] = {
@@ -550,7 +570,9 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
     auto thread_state = XThread::GetCurrentThread()->thread_state();
     processor()->Execute(thread_state, module->entry_point(), args,
                          xe::countof(args));
+    module->set_dll_process_attached(false);
   }
+  module->set_dll_process_attach_pending(false);
 
   auto iter = std::find_if(
       user_modules_.begin(), user_modules_.end(),
@@ -657,22 +679,45 @@ void KernelState::UnregisterThread(XThread* thread) {
 }
 
 void KernelState::OnThreadExecute(XThread* thread) {
-  XELOGI("KernelState::OnThreadExecute begin: handle={:08X}",
-         thread->handle());
   auto global_lock = global_critical_region_.Acquire();
 
   // Must be called on executing thread.
   assert_true(XThread::GetCurrentThread() == thread);
 
+  if (!thread->is_guest_thread()) {
+    return;
+  }
+
+  auto thread_state = thread->thread_state();
+  std::vector<UserModule*> process_attached_this_thread;
+  for (auto user_module : user_modules_) {
+    if (user_module->is_dll_module() && user_module->entry_point() &&
+        user_module->dll_process_attach_pending() &&
+        !user_module->dll_process_attached()) {
+      uint64_t args[] = {
+          user_module->handle(),
+          1,  // DLL_PROCESS_ATTACH
+          0,  // 0 because always dynamic
+      };
+      processor()->Execute(thread_state, user_module->entry_point(), args,
+                           xe::countof(args));
+      user_module->set_dll_process_attached(true);
+      user_module->set_dll_process_attach_pending(false);
+      process_attached_this_thread.push_back(user_module.get());
+    }
+  }
+
   // Call DllMain(DLL_THREAD_ATTACH) for each user module:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
-  auto thread_state = thread->thread_state();
   for (auto user_module : user_modules_) {
-    if (user_module->is_dll_module() && user_module->entry_point()) {
-      XELOGI(
-          "KernelState::OnThreadExecute DLL_THREAD_ATTACH begin: "
-          "thread={:08X}, module='{}', entry={:08X}",
-          thread->handle(), user_module->name(), user_module->entry_point());
+    if (user_module->is_dll_module() && user_module->entry_point() &&
+        user_module->dll_process_attached()) {
+      if (std::find(process_attached_this_thread.begin(),
+                    process_attached_this_thread.end(), user_module.get()) !=
+          process_attached_this_thread.end()) {
+        continue;
+      }
+
       uint64_t args[] = {
           user_module->handle(),
           2,  // DLL_THREAD_ATTACH
@@ -680,13 +725,8 @@ void KernelState::OnThreadExecute(XThread* thread) {
       };
       processor()->Execute(thread_state, user_module->entry_point(), args,
                            xe::countof(args));
-      XELOGI(
-          "KernelState::OnThreadExecute DLL_THREAD_ATTACH end: "
-          "thread={:08X}, module='{}'",
-          thread->handle(), user_module->name());
     }
   }
-  XELOGI("KernelState::OnThreadExecute end: handle={:08X}", thread->handle());
 }
 
 void KernelState::OnThreadExit(XThread* thread) {
@@ -695,11 +735,17 @@ void KernelState::OnThreadExit(XThread* thread) {
   // Must be called on executing thread.
   assert_true(XThread::GetCurrentThread() == thread);
 
+  if (!thread->is_guest_thread()) {
+    emulator()->processor()->OnThreadExit(thread->thread_id());
+    return;
+  }
+
   // Call DllMain(DLL_THREAD_DETACH) for each user module:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
   auto thread_state = thread->thread_state();
   for (auto user_module : user_modules_) {
-    if (user_module->is_dll_module() && user_module->entry_point()) {
+    if (user_module->is_dll_module() && user_module->entry_point() &&
+        user_module->dll_process_attached()) {
       uint64_t args[] = {
           user_module->handle(),
           3,  // DLL_THREAD_DETACH

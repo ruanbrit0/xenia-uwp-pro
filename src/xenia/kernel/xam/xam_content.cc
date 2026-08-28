@@ -232,7 +232,7 @@ DECLARE_XAM_EXPORT1(XamContentCreateEnumerator, kContent, kImplemented);
 
 enum class kDispositionState : uint32_t { Unknown = 0, Create = 1, Open = 2 };
 
-dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
+dword_result_t xeXamContentCreate(dword_t /*user_index*/, lpstring_t root_name,
                                   lpvoid_t content_data_ptr,
                                   dword_t content_data_size, dword_t flags,
                                   lpdword_t disposition_ptr,
@@ -250,15 +250,6 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
   }
 
   auto content_manager = kernel_state()->content_manager();
-
-  XELOGI(
-      "XamContentCreate: user={}, root='{}', device={}, type={:08X}, "
-      "file='{}', flags={:08X}, overlapped={:08X}",
-      static_cast<uint32_t>(user_index), root_name.value(),
-      static_cast<uint32_t>(content_data.device_id),
-      static_cast<uint32_t>(content_data.content_type.get()),
-      content_data.file_name(), static_cast<uint32_t>(flags),
-      static_cast<uint32_t>(overlapped_ptr.guest_address()));
 
   if (overlapped_ptr && disposition_ptr) {
     *disposition_ptr = 0;

@@ -195,9 +195,24 @@ X_STATUS UserModule::LoadContinue() {
     return X_STATUS_SUCCESS;
   }
 
+  if (load_continue_active_) {
+    return X_STATUS_SUCCESS;
+  }
+  load_continue_active_ = true;
+
+  auto finish = [this](X_STATUS status) {
+    load_continue_active_ = false;
+    return status;
+  };
+
+  X_STATUS result = LoadImportModules();
+  if (XFAILED(result)) {
+    return finish(result);
+  }
+
   // Finish XexModule load (PE sections/imports/symbols...)
   if (!xex_module()->LoadContinue()) {
-    return X_STATUS_UNSUCCESSFUL;
+    return finish(X_STATUS_UNSUCCESSFUL);
   }
 
   // Copy the xex2 header into guest memory.
@@ -232,6 +247,71 @@ X_STATUS UserModule::LoadContinue() {
   ldr_data->entry_point = entry_point_;
 
   OnLoad();
+
+  return finish(X_STATUS_SUCCESS);
+}
+
+X_STATUS UserModule::LoadImportModules() {
+  xex2_opt_import_libraries* opt_import_libraries = nullptr;
+  if (!xex_module()->GetOptHeader(XEX_HEADER_IMPORT_LIBRARIES,
+                                  &opt_import_libraries)) {
+    return X_STATUS_SUCCESS;
+  }
+
+  const char* string_table[32];
+  std::memset(string_table, 0, sizeof(string_table));
+
+  for (size_t i = 0, o = 0; i < opt_import_libraries->string_table.size &&
+                            o < opt_import_libraries->string_table.count;
+       ++o) {
+    assert_true(o < xe::countof(string_table));
+    const char* str = &opt_import_libraries->string_table.data[i];
+    string_table[o] = str;
+
+    i += std::strlen(str) + 1;
+    if ((i % 4) != 0) {
+      i += 4 - (i % 4);
+    }
+  }
+
+  auto library_data = reinterpret_cast<uint8_t*>(opt_import_libraries);
+  uint32_t library_offset = opt_import_libraries->string_table.size + 12;
+  while (library_offset < opt_import_libraries->size) {
+    auto library = reinterpret_cast<xex2_import_library*>(library_data +
+                                                          library_offset);
+    if (!library->size) {
+      break;
+    }
+
+    size_t library_name_index = library->name_index & 0xFF;
+    assert_true(library_name_index < opt_import_libraries->string_table.count);
+    const char* library_name = string_table[library_name_index];
+    assert_not_null(library_name);
+
+    if (!kernel_state()->IsKernelModule(library_name)) {
+      std::string dependency_path(library_name);
+      if (xe::utf8::find_name_from_guest_path(dependency_path) ==
+          dependency_path) {
+        dependency_path = xe::utf8::join_guest_paths(
+            xe::utf8::find_base_guest_path(path_), dependency_path);
+      }
+
+      auto dependency = kernel_state()->LoadUserModule(dependency_path, false);
+      if (dependency) {
+        X_STATUS result = kernel_state()->FinishLoadingUserModule(dependency);
+        if (XFAILED(result)) {
+          XELOGW("Failed to initialize imported module {}: {:08X}",
+                 dependency_path, result);
+          return result;
+        }
+      } else {
+        XELOGW("Imported user module {} was not found for {}", dependency_path,
+               name_);
+      }
+    }
+
+    library_offset += library->size;
+  }
 
   return X_STATUS_SUCCESS;
 }

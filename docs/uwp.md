@@ -4,7 +4,7 @@ Este documento descreve o fluxo local deste fork UWP. O build desktop herdado do
 
 ## Versao Atual
 
-A base estavel atual e `1.1.13` (`1.1.13.0` no manifesto). Esta versao mantem o decoder XMA antigo no UWP e foi a que apresentou melhor resultado pratico ate agora no Xbox com um titulo retail de streaming pesado. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
+A base estavel atual e `1.1.14` (`1.1.14.0` no manifesto). Esta versao preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP e adiciona correcao geral no loader XEX/XDL para carregar modulos importados e respeitar a ordem de `DllMain` antes dos attaches de thread. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
 
 ## Requisitos
 
@@ -58,7 +58,7 @@ Target -> Local Machine
 O pacote Debug de teste e gerado em:
 
 ```text
-xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.13.0_Debug_Test\
+xenia-canary-uwp\AppPackages\xenia-canary-uwp\xenia-canary-uwp_1.1.14.0_Debug_Test\
 ```
 
 Artefatos em `xenia-canary-uwp/AppPackages/`, `xenia-canary-uwp/x64/` e `xenia-canary-uwp/xenia-canary-uwp/` sao saida local de build e nao devem ser commitados.
@@ -85,6 +85,7 @@ O manifesto nao usa `runFullTrust`. Ele ainda declara `broadFileSystemAccess`, `
 - Ajustes de montagem VFS para conteudo instalado e caches locais.
 - Leituras XContent/SVOD protegidas por lock por arquivo, evitando corrida em `Seek` + `fread` quando o mesmo `FILE*` e compartilhado.
 - No UWP, XMA nao usa thread dedicada por padrao; frames/offsets invalidos no decoder antigo sao tratados como drop controlado com flush do FFmpeg.
+- O loader XEX/XDL carrega modulos importados de usuario e executa `DLL_PROCESS_ATTACH` antes de permitir `DLL_THREAD_ATTACH` em threads guest.
 - Implementacoes e stubs adicionais em `xam`/`xboxkrnl` para reduzir falhas de boot.
 - Melhorias em resolucao de conteudo, arquivos, perfil de usuario, entrada e chamadas de I/O usadas por jogos retail.
 

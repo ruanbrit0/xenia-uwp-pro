@@ -23,7 +23,7 @@
 - Build UWP local validado com Visual Studio 2022 Community `17.14.39` e SDK Windows `10.0.22621.0`.
 - MSBuild direto: `& "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" "xenia-canary-uwp\xenia-canary-uwp.vcxproj" /nologo /m /v:m /p:Configuration=Debug /p:Platform=x64`.
 - Para rodar no Visual Studio: abrir `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecionar `Debug | x64 | Local Machine`, definir `xenia-canary-uwp` como startup project e pressionar `F5`.
-- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.13.0_Debug_Test/`.
+- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.14.0_Debug_Test/`.
 - O projeto espera `Microsoft.Windows.CppWinRT.2.0.250303.1` em `build/packages/`; restaure com NuGet se faltar.
 - As referencias UWP mapeiam `Debug|x64` para dependencias Premake `Debug Windows-UWP|x64`; nao troque isso para `Debug Windows|x64`, pois UWP precisa de `XE_PLATFORM_WINRT=1`.
 - O Debug UWP usa runtime Release compativel com as libs geradas (`/MD`, `_ITERATOR_DEBUG_LEVEL=0`); mudar para runtime Debug reintroduz `LNK2038`.
@@ -36,6 +36,7 @@
 - No UWP, `src/xenia/apu/xma_decoder.cc` nao usa thread dedicada de XMA por padrao, e `xma_context_old.cc` descarta frames/offsets invalidos de forma controlada. Nao reative a thread dedicada no UWP sem validar em Xbox.
 - `src/xenia/ui/imgui_drawer.cc` deve usar somente a API nova de input ImGui (`io.AddKeyEvent`); nao reintroduza `io.KeyMap`, pois isso causa assert em runtime.
 - `src/xenia/ui/file_picker_win.cc` precisa da definicao completa de `Win32Window`; mantenha o include de `xenia/ui/window_win.h` se o cast para `Win32Window` continuar ali.
+- O loader XEX/XDL deve carregar imports de usuario e garantir `DLL_PROCESS_ATTACH` antes de `DLL_THREAD_ATTACH`; nao volte a chamar `DllMain` de DLL guest em thread host.
 
 ## Assets Gerados
 - Rode `.\xb.ps1 buildshaders` depois de alterar `.glsl`, `.hlsl` ou `.xesl`.
@@ -48,6 +49,14 @@
 - Arquivos de plataforma sao escolhidos por sufixo via `local_platform_files`: `_win`, `_posix`, `_linux`, `_android`.
 - Prefira arquivos com sufixo de plataforma a grandes blocos `#ifdef`.
 - Mantenha codigo especifico do emulador fora de `xenia-base`; ela e uma biblioteca leve de compatibilidade.
+
+## Estrategia De Compatibilidade
+- A tag `1.1.13` segue sendo o baseline validado para Forza Horizon no Xbox UWP; use-a como ponto de comparacao antes de aceitar mudancas globais arriscadas.
+- O objetivo do fork e evoluir para um emulador multifuncional para varios jogos, sem transformar correcoes em hacks especificos de titulo.
+- Otimizacoes novas devem ser pensadas como melhorias gerais de APU, VFS, kernel, GPU, timing ou configuracao UWP, com mudancas pequenas e testaveis.
+- Alteracoes em APU/XMA, XContent/SVOD, threading, timing, shader/cache ou filesystem devem ser retestadas contra o baseline do Forza quando houver risco de regressao.
+- Se uma mudanca for experimental ou puder afetar compatibilidade existente, prefira uma flag/config para permitir desligar o comportamento sem perder o restante do trabalho.
+- Para novos jogos-alvo, colete sintomas e logs reais antes de alterar codigo; documente quando uma decisao depender de comportamento observado em jogo.
 
 ## Estilo E Politica
 - C++ usa `.clang-format`: base Google, ponteiros a esquerda, includes ordenados, blocos de includes preservados.
