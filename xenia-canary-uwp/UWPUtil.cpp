@@ -166,6 +166,12 @@ std::string GetLocalState() {
       winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path());
 }
 
+std::string GetInstalledLocation() {
+  return winrt::to_string(winrt::Windows::ApplicationModel::Package::Current()
+                              .InstalledLocation()
+                              .Path());
+}
+
 int GetCoreDPI() { return m_DPI; }
 
 void SetAutomaticLaunch(std::string game_path) {

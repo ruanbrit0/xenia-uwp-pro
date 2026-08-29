@@ -14,6 +14,8 @@
 DECLARE_path(trace_gpu_prefix);
 DECLARE_bool(trace_gpu_stream);
 
+DECLARE_bool(log_fps);
+
 DECLARE_path(dump_shaders);
 
 DECLARE_bool(vsync);

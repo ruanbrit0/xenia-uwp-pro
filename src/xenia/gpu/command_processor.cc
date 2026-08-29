@@ -13,6 +13,7 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/byte_stream.h"
+#include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
@@ -737,6 +738,41 @@ void CommandProcessor::MakeCoherent() {
 void CommandProcessor::PrepareForWait() { trace_writer_.Flush(); }
 
 void CommandProcessor::ReturnFromWait() {}
+
+void CommandProcessor::LogGuestFrameRate(uint32_t frontbuffer_width,
+                                         uint32_t frontbuffer_height) {
+  if (!cvars::log_fps) {
+    fps_log_last_time_ms_ = 0;
+    fps_log_frame_count_ = 0;
+    return;
+  }
+
+  constexpr uint64_t kLogIntervalMs = 5000;
+  const uint64_t now_ms = Clock::QueryHostUptimeMillis();
+  if (!fps_log_last_time_ms_) {
+    fps_log_last_time_ms_ = now_ms;
+    fps_log_frame_count_ = 1;
+    return;
+  }
+
+  ++fps_log_frame_count_;
+  const uint64_t elapsed_ms = now_ms - fps_log_last_time_ms_;
+  if (elapsed_ms < kLogIntervalMs) {
+    return;
+  }
+
+  const double fps =
+      static_cast<double>(fps_log_frame_count_) * 1000.0 /
+      static_cast<double>(elapsed_ms);
+  const uint32_t title_id = kernel_state_ ? kernel_state_->title_id() : 0;
+  XELOGI("Game FPS: title={:08X}, fps={:.1f}, frames={}, interval_ms={}, "
+         "frontbuffer={}x{}",
+         title_id, fps, fps_log_frame_count_, elapsed_ms, frontbuffer_width,
+         frontbuffer_height);
+
+  fps_log_last_time_ms_ = now_ms;
+  fps_log_frame_count_ = 0;
+}
 
 void CommandProcessor::InitializeTrace() {
   // Write the initial register values, to be loaded directly into the

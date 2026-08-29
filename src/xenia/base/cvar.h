@@ -50,6 +50,7 @@ class IConfigVar : virtual public ICommandVar {
   virtual std::string config_value() const = 0;
   virtual void LoadConfigValue(std::shared_ptr<cpptoml::base> result) = 0;
   virtual void LoadGameConfigValue(std::shared_ptr<cpptoml::base> result) = 0;
+  virtual void ClearGameConfigValue() = 0;
   virtual void ResetConfigValueToDefault() = 0;
 };
 
@@ -89,6 +90,7 @@ class ConfigVar : public CommandVar<T>, virtual public IConfigVar {
   void AddToLaunchOptions(cxxopts::Options* options) override;
   void LoadConfigValue(std::shared_ptr<cpptoml::base> result) override;
   void LoadGameConfigValue(std::shared_ptr<cpptoml::base> result) override;
+  void ClearGameConfigValue() override;
   void SetConfigValue(T val);
   void SetGameConfigValue(T val);
   // Changes the actual value used to the one specified, and also makes it the
@@ -267,6 +269,11 @@ void ConfigVar<T>::SetConfigValue(T val) {
 template <class T>
 void ConfigVar<T>::SetGameConfigValue(T val) {
   game_config_value_ = std::make_unique<T>(val);
+  UpdateValue();
+}
+template <class T>
+void ConfigVar<T>::ClearGameConfigValue() {
+  game_config_value_.reset();
   UpdateValue();
 }
 template <class T>

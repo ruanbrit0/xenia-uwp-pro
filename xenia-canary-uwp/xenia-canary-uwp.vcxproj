@@ -281,6 +281,10 @@
     <None Include="packages.config" />
     <None Include="PropertySheet.props" />
     <None Include="xenia-canary-uwp_TemporaryKey.pfx" />
+    <Content Include="game_configs\45410912.config.toml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DeploymentContent>true</DeploymentContent>
+    </Content>
     <Text Include="readme.txt">
       <DeploymentContent>false</DeploymentContent>
     </Text>

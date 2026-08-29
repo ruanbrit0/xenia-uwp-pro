@@ -23,7 +23,7 @@
 - Build UWP local validado com Visual Studio 2022 Community `17.14.39` e SDK Windows `10.0.22621.0`.
 - MSBuild direto: `& "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" "xenia-canary-uwp\xenia-canary-uwp.vcxproj" /nologo /m /v:m /p:Configuration=Debug /p:Platform=x64`.
 - Para rodar no Visual Studio: abrir `xenia-canary-uwp/xenia-canary-uwp.vcxproj`, selecionar `Debug | x64 | Local Machine`, definir `xenia-canary-uwp` como startup project e pressionar `F5`.
-- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.1.14.0_Debug_Test/`.
+- Pacote gerado fica em `xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.2.0.0_Debug_Test/`.
 - O projeto espera `Microsoft.Windows.CppWinRT.2.0.250303.1` em `build/packages/`; restaure com NuGet se faltar.
 - As referencias UWP mapeiam `Debug|x64` para dependencias Premake `Debug Windows-UWP|x64`; nao troque isso para `Debug Windows|x64`, pois UWP precisa de `XE_PLATFORM_WINRT=1`.
 - O Debug UWP usa runtime Release compativel com as libs geradas (`/MD`, `_ITERATOR_DEBUG_LEVEL=0`); mudar para runtime Debug reintroduz `LNK2038`.
@@ -57,6 +57,16 @@
 - Alteracoes em APU/XMA, XContent/SVOD, threading, timing, shader/cache ou filesystem devem ser retestadas contra o baseline do Forza quando houver risco de regressao.
 - Se uma mudanca for experimental ou puder afetar compatibilidade existente, prefira uma flag/config para permitir desligar o comportamento sem perder o restante do trabalho.
 - Para novos jogos-alvo, colete sintomas e logs reais antes de alterar codigo; documente quando uma decisao depender de comportamento observado em jogo.
+
+## Configs Padrao Por Jogo
+- Prefira configs por jogo antes de hardcodes por `Title ID` quando uma flag existente resolver um problema especifico de compatibilidade.
+- O app copia configs padrao empacotadas em `xenia-canary-uwp/game_configs/*.config.toml` para `LocalState/config/` no primeiro inicio, sem sobrescrever arquivos do usuario.
+- No UWP, a origem empacotada e a pasta instalada do pacote (`UWP::GetInstalledLocation()/game_configs`); nao use `GetExecutableFolder()` para isso porque no WinRT ele aponta para `LocalState` neste fork.
+- O carregamento usa `LocalState/config/<TITLEID>.config.toml`, entao vale para GOD, ISO/XISO, STFS/SVOD ou XEX solto quando o XEX principal tem o mesmo `Title ID`.
+- Valores de config por jogo sao limpos antes de carregar outro titulo; mantenha esse comportamento para evitar vazamento de flags entre jogos na mesma sessao.
+- Ao adicionar uma config padrao nova, inclua o arquivo em `xenia-canary-uwp/game_configs/`, adicione ao projeto UWP como `Content` com `DeploymentContent=true`, documente o motivo e confirme que a flag nao vira padrao global.
+- Portal 2 (`45410912`) usa `xenia-canary-uwp/game_configs/45410912.config.toml` com `[D3D12] d3d12_readback_resolve = true` para corrigir texto/menu invisivel causado por resolve de `render-to-texture`; isso pode afetar desempenho apenas no Portal 2.
+- Nao use configs por jogo para hacks de gameplay ou identificadores visiveis na UI; use somente para ajustes tecnicos gerais ja expostos por config/flag.
 
 ## Estilo E Politica
 - C++ usa `.clang-format`: base Google, ponteiros a esquerda, includes ordenados, blocos de includes preservados.

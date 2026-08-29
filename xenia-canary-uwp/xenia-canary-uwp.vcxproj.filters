@@ -57,11 +57,19 @@
     <None Include="xenia-canary-uwp_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="game_configs\45410912.config.toml">
+      <Filter>Game Configs</Filter>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <Text Include="readme.txt" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Assets">
       <UniqueIdentifier>{b4052912-ca18-4b06-8a74-43d31e0a21dc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game Configs">
+      <UniqueIdentifier>{43714377-0b52-4c40-9d9b-8effae5634a6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

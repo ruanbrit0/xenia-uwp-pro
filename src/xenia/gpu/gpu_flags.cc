@@ -13,6 +13,10 @@ DEFINE_path(trace_gpu_prefix, "scratch/gpu/",
             "Prefix path for GPU trace files.", "GPU");
 DEFINE_bool(trace_gpu_stream, false, "Trace all GPU packets.", "GPU");
 
+DEFINE_bool(log_fps, false,
+            "Log guest swap-based FPS periodically for diagnostics.",
+            "Logging");
+
 DEFINE_path(
     dump_shaders, "",
     "For shader debugging, path to dump GPU shaders to as they are compiled.",

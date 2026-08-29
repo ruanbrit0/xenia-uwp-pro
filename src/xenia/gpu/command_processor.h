@@ -227,6 +227,9 @@ class CommandProcessor {
 
   virtual void OnPrimaryBufferEnd() {}
 
+  void LogGuestFrameRate(uint32_t frontbuffer_width,
+                         uint32_t frontbuffer_height);
+
 #include "pm4_command_processor_declare.h"
 
   virtual Shader* LoadShader(xenos::ShaderType shader_type,
@@ -275,6 +278,8 @@ class CommandProcessor {
   std::vector<uint32_t> me_bin_;
 
   uint32_t counter_ = 0;
+  uint64_t fps_log_last_time_ms_ = 0;
+  uint32_t fps_log_frame_count_ = 0;
 
   uint32_t primary_buffer_ptr_ = 0;
   uint32_t primary_buffer_size_ = 0;

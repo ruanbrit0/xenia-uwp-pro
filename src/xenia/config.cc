@@ -17,6 +17,10 @@
 #include "xenia/base/string.h"
 #include "xenia/base/string_buffer.h"
 
+#if XE_PLATFORM_WINRT
+#include "xenia-canary-uwp/UWPUtil.h"
+#endif
+
 std::shared_ptr<cpptoml::table> ParseFile(
     const std::filesystem::path& filename) {
   std::ifstream file(filename);
@@ -49,6 +53,64 @@ std::string config_name = "xenia-canary.config.toml";
 std::filesystem::path config_folder;
 std::filesystem::path config_path;
 std::string game_config_suffix = ".config.toml";
+
+bool HasGameConfigSuffix(const std::filesystem::path& path) {
+  const auto filename = xe::path_to_utf8(path.filename());
+  return filename.size() >= game_config_suffix.size() &&
+         filename.compare(filename.size() - game_config_suffix.size(),
+                          game_config_suffix.size(), game_config_suffix) == 0;
+}
+
+void InstallDefaultGameConfigs() {
+  if (config_folder.empty()) {
+    return;
+  }
+
+#if XE_PLATFORM_WINRT
+  const auto default_game_config_folder =
+      xe::to_path(UWP::GetInstalledLocation()) / "game_configs";
+#else
+  const auto default_game_config_folder =
+      xe::filesystem::GetExecutableFolder() / "game_configs";
+#endif
+  std::error_code error_code;
+  if (!std::filesystem::is_directory(default_game_config_folder, error_code)) {
+    return;
+  }
+
+  const auto user_game_config_folder = config_folder / "config";
+  for (const auto& entry : std::filesystem::directory_iterator(
+           default_game_config_folder, error_code)) {
+    if (error_code) {
+      XELOGW("Failed to enumerate default game configs: {}",
+             error_code.message());
+      return;
+    }
+    std::error_code entry_error_code;
+    if (!entry.is_regular_file(entry_error_code) ||
+        !HasGameConfigSuffix(entry.path())) {
+      continue;
+    }
+
+    const auto destination = user_game_config_folder / entry.path().filename();
+    std::error_code destination_error_code;
+    if (std::filesystem::exists(destination, destination_error_code)) {
+      continue;
+    }
+
+    xe::filesystem::CreateParentFolder(destination);
+    std::error_code copy_error_code;
+    if (std::filesystem::copy_file(entry.path(), destination,
+                                   std::filesystem::copy_options::none,
+                                   copy_error_code)) {
+      XELOGI("Installed default game config: {}",
+             xe::path_to_utf8(destination));
+    } else if (copy_error_code) {
+      XELOGW("Failed to install default game config '{}': {}",
+             xe::path_to_utf8(entry.path()), copy_error_code.message());
+    }
+  }
+}
 
 bool sortCvar(cvar::IConfigVar* a, cvar::IConfigVar* b) {
   if (a->category() < b->category()) return true;
@@ -253,6 +315,7 @@ void SaveConfig() {
 
 void SetupConfig(const std::filesystem::path& config_folder) {
   config::config_folder = config_folder;
+  InstallDefaultGameConfigs();
   // check if the user specified a specific config to load
   if (!cvars::config.empty()) {
     config_path = xe::to_path(cvars::config);
@@ -281,6 +344,12 @@ void SetupConfig(const std::filesystem::path& config_folder) {
 }
 
 void LoadGameConfig(const std::string_view title_id) {
+  if (cvar::ConfigVars) {
+    for (auto& it : *cvar::ConfigVars) {
+      static_cast<cvar::IConfigVar*>(it.second)->ClearGameConfigValue();
+    }
+  }
+
   const auto game_config_folder = config_folder / "config";
   const auto game_config_path =
       game_config_folder / (std::string(title_id) + game_config_suffix);
