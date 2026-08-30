@@ -73,6 +73,12 @@ DECLARE_bool(clear_memory_page_state);
 
 DECLARE_bool(d3d12_readback_resolve);
 
+DECLARE_int32(user_language);
+
+DECLARE_int32(user_country);
+
+DECLARE_int32(internal_display_resolution);
+
 DEFINE_bool(fullscreen, false, "Whether to launch the emulator in fullscreen.",
             "Display");
 
@@ -164,6 +170,162 @@ DEFINE_int32(recent_titles_entry_amount, 10,
              "Allows user to define how many titles is saved in list of "
              "recently played titles.",
              "General");
+
+#if XE_PLATFORM_WINRT
+namespace {
+
+enum class FrontendLanguage {
+  kEnglish,
+  kPortugueseBrazil,
+  kSpanishSpain,
+};
+
+FrontendLanguage GetFrontendLanguage() {
+  switch (cvars::user_language) {
+    case 9:
+      return FrontendLanguage::kPortugueseBrazil;
+    case 5:
+      return FrontendLanguage::kSpanishSpain;
+    default:
+      return FrontendLanguage::kEnglish;
+  }
+}
+
+const char* T(const char* en, const char* pt_br, const char* es_es) {
+  switch (GetFrontendLanguage()) {
+    case FrontendLanguage::kPortugueseBrazil:
+      return pt_br;
+    case FrontendLanguage::kSpanishSpain:
+      return es_es;
+    default:
+      return en;
+  }
+}
+
+std::string Label(const char* text, const char* id) {
+  return fmt::format("{}##{}", text, id);
+}
+
+struct SettingHelp {
+  const char* title;
+  const char* description;
+  const char* when_to_use;
+  const char* impact;
+  const char* recommendation;
+  const char* affects = nullptr;
+};
+
+void SetHelpIfActive(SettingHelp* current_help, const SettingHelp& help) {
+  if (ImGui::IsItemFocused() || ImGui::IsItemHovered()) {
+    *current_help = help;
+  }
+}
+
+void DrawSettingHelp(const SettingHelp& help) {
+  ImGui::Spacing();
+  ImGui::Separator();
+  ImGui::TextWrapped("%s", help.title);
+  if (help.affects) {
+    ImGui::TextWrapped("%s: %s", T("Affects", u8"Afeta", u8"Afecta"),
+                       help.affects);
+  }
+  ImGui::TextWrapped("%s: %s", T("What it does", u8"O que faz",
+                                  u8"Qué hace"),
+                     help.description);
+  ImGui::TextWrapped("%s: %s", T("When to use", u8"Quando usar",
+                                  u8"Cuándo usar"),
+                     help.when_to_use);
+  ImGui::TextWrapped("%s: %s", T("Impact", u8"Impacto", u8"Impacto"),
+                     help.impact);
+  ImGui::TextWrapped("%s: %s", T("Recommendation", u8"Recomendação",
+                                  u8"Recomendación"),
+                     help.recommendation);
+}
+
+const char* ScalingEffectName(const std::string& value) {
+  if (value == "bilinear") {
+    return "Bilinear";
+  }
+  if (value == "cas") {
+    return "CAS";
+  }
+  if (value == "fsr") {
+    return "FSR";
+  }
+  return T("None", u8"Nenhum", u8"Ninguno");
+}
+
+const char* AntiAliasingName(const std::string& value) {
+  if (value == "fxaa") {
+    return "FXAA";
+  }
+  if (value == "fxaa_extreme") {
+    return "FXAA Extreme";
+  }
+  return T("None", u8"Nenhum", u8"Ninguno");
+}
+
+const char* RenderTargetPathName(const std::string& value) {
+  if (value == "rov") {
+    return "ROV";
+  }
+  if (value == "rtv") {
+    return "RTV";
+  }
+  return T("Any", u8"Qualquer", u8"Cualquiera");
+}
+
+const char* InternalDisplayResolutionName(int32_t value) {
+  switch (value) {
+    case 0:
+      return "640x480";
+    case 2:
+      return "720x480";
+    case 5:
+      return "848x480";
+    case 8:
+      return "1280x720";
+    default:
+      return T("Custom/unsupported", u8"Personalizada/não suportada",
+               u8"Personalizada/no soportada");
+  }
+}
+
+const char* LanguageName(FrontendLanguage language) {
+  switch (language) {
+    case FrontendLanguage::kPortugueseBrazil:
+      return "Português (Brasil)";
+    case FrontendLanguage::kSpanishSpain:
+      return "Español (España)";
+    default:
+      return "English";
+  }
+}
+
+void SetFrontendLanguage(FrontendLanguage language) {
+  auto user_language = dynamic_cast<cvar::ConfigVar<int32_t>*>(
+      cvar::ConfigVars->find("user_language")->second);
+  auto user_country = dynamic_cast<cvar::ConfigVar<int32_t>*>(
+      cvar::ConfigVars->find("user_country")->second);
+  switch (language) {
+    case FrontendLanguage::kPortugueseBrazil:
+      user_language->SetConfigValue(9);
+      user_country->SetConfigValue(13);
+      break;
+    case FrontendLanguage::kSpanishSpain:
+      user_language->SetConfigValue(5);
+      user_country->SetConfigValue(31);
+      break;
+    default:
+      user_language->SetConfigValue(1);
+      user_country->SetConfigValue(103);
+      break;
+  }
+  config::SaveConfig();
+}
+
+}  // namespace
+#endif  // XE_PLATFORM_WINRT
 
 namespace xe {
 namespace app {
@@ -1864,18 +2026,46 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0.0f));
   if (ImGui::Begin("Frontend", nullptr, flags)) {
     if (ImGui::BeginTabBar("tabs")) {
-      if (ImGui::BeginTabItem("Game List", nullptr)) {
+      const auto game_list_tab = Label(T("Game List", u8"Lista de Jogos",
+                                          u8"Lista de juegos"),
+                                        "tab_game_list");
+      if (ImGui::BeginTabItem(game_list_tab.c_str(), nullptr)) {
         auto games = UWP::GetGames();
-        ImGui::Text("Total Games: %d%s", static_cast<int>(games.size()),
-                    UWP::IsScanningGamePaths() ? " (Scanning...)" : "");
-        ImGui::TextWrapped("%s", UWP::GetGameScanStatus().c_str());
+        const bool is_scanning = UWP::IsScanningGamePaths();
+        const uint64_t game_count = is_scanning
+                                        ? UWP::GetGameScanFoundCount()
+                                        : static_cast<uint64_t>(games.size());
+        ImGui::Text("%s: %llu%s",
+                    T("Total Games", u8"Total de jogos", u8"Juegos totales"),
+                    static_cast<unsigned long long>(game_count),
+                    is_scanning
+                        ? T(" (Scanning...)", u8" (Verificando...)",
+                            u8" (Escaneando...)")
+                        : "");
+        const std::string scan_status =
+            is_scanning
+                ? fmt::format("{}: {} {}",
+                              T("Scanning game paths",
+                                u8"Verificando pastas de jogos",
+                                u8"Escaneando carpetas de juegos"),
+                              game_count,
+                              T("games found", u8"jogos encontrados",
+                                u8"juegos encontrados"))
+                : T("Idle", u8"Ocioso", u8"Inactivo");
+        ImGui::TextWrapped("%s", scan_status.c_str());
         if (ImGui::BeginListBox("##gamelist", ImVec2(-1, -1))) {
           if (games.empty()) {
             ImGui::TextDisabled(
-                UWP::IsScanningGamePaths()
-                    ? "Scanning selected folders..."
-                    : "No games found. Add a folder in Paths or refresh the "
-                      "list.");
+                is_scanning
+                    ? T("Scanning selected folders...",
+                        u8"Verificando pastas selecionadas...",
+                        u8"Escaneando carpetas seleccionadas...")
+                    : T("No games found. Add a folder in Paths or refresh the "
+                        "list.",
+                        u8"Nenhum jogo encontrado. Adicione uma pasta em "
+                        u8"Caminhos ou atualize a lista.",
+                        u8"No se encontraron juegos. Agrega una carpeta en "
+                        u8"Rutas o actualiza la lista."));
           }
 
           for (const auto& set : games) {
@@ -1899,67 +2089,204 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         ImGui::EndTabItem();
       }
 
-      if (ImGui::BeginTabItem("Settings", nullptr)) {
-        std::string tooltip =
-            "Note: Xenia-Canary is a WIP emulator.\nMost settings should be "
-            "considered hacks, and may cause (or fix) crashes and other "
-            "problems. Edit these settings at your own risk.";
+      const auto settings_tab = Label(T("Settings", u8"Configurações",
+                                        u8"Ajustes"),
+                                      "tab_settings");
+      if (ImGui::BeginTabItem(settings_tab.c_str(), nullptr)) {
+        SettingHelp setting_help = {
+            T("Settings Help", u8"Ajuda das configurações",
+              u8"Ayuda de ajustes"),
+            T("These options are experimental compatibility and debugging "
+              "switches.",
+              u8"Estas opções são ajustes experimentais de compatibilidade e "
+              u8"diagnóstico.",
+              u8"Estas opciones son ajustes experimentales de compatibilidad y "
+              u8"diagnóstico."),
+            T("Select or hover an option to see what it changes before "
+              "enabling it.",
+              u8"Selecione ou passe por uma opção para ver o que ela altera "
+              u8"antes de ativar.",
+              u8"Selecciona o pasa por una opción para ver qué cambia antes de "
+              u8"activarla."),
+            T("Some settings may reduce performance, change timing or fix one "
+              "game while breaking another.",
+              u8"Algumas opções podem reduzir desempenho, alterar timing ou "
+              u8"corrigir um jogo e quebrar outro.",
+              u8"Algunas opciones pueden reducir rendimiento, cambiar timing o "
+              u8"arreglar un juego y romper otro."),
+            T("Change one option at a time and prefer per-game configs.",
+              u8"Altere uma opção por vez e prefira configs por jogo.",
+              u8"Cambia una opción por vez y prefiere configs por juego."),
+            T("Game / Image / Performance / Diagnosis / UI",
+              u8"Jogo / Imagem / Desempenho / Diagnóstico / UI",
+              u8"Juego / Imagen / Rendimiento / Diagnóstico / UI")};
 
-        if (ImGui::TreeNode("[D3D12]")) {
+        const auto d3d12_tree = Label("[D3D12]", "settings_d3d12");
+        if (ImGui::TreeNode(d3d12_tree.c_str())) {
           auto c_allow_vrr_tearing = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars
                   ->find("d3d12_allow_variable_refresh_rate_and_tearing")
                   ->second);
-          if (ImGui::Checkbox("Allow Variable Refresh Rate/Tearing",
+          const auto vrr_label = Label(
+              T("Allow Variable Refresh Rate/Tearing",
+                u8"Permitir taxa de atualização variável/tearing",
+                u8"Permitir frecuencia de actualización variable/tearing"),
+              "d3d12_allow_vrr_tearing");
+          if (ImGui::Checkbox(vrr_label.c_str(),
                               c_allow_vrr_tearing->current_value())) {
             c_allow_vrr_tearing->SetConfigValue(
                 !c_allow_vrr_tearing->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_allow_vrr_tearing->description();
-          }
-
-          auto c_clear_memory_page = dynamic_cast<cvar::ConfigVar<bool>*>(
-              cvar::ConfigVars->find("d3d12_clear_memory_page_state")->second);
-          if (ImGui::Checkbox("Clear Memory Page State",
-                              c_clear_memory_page->current_value())) {
-            c_clear_memory_page->SetConfigValue(
-                !c_clear_memory_page->GetTypedConfigValue());
-            config::SaveConfig();
-          }
-
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_clear_memory_page->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Allow Variable Refresh Rate/Tearing",
+                 u8"Permitir taxa de atualização variável/tearing",
+                 u8"Permitir frecuencia de actualización variable/tearing"),
+               T("Allows VRR and tearing in fullscreen when supported by the "
+                 "display.",
+                 u8"Permite VRR e tearing em tela cheia quando a tela oferece "
+                 u8"suporte.",
+                 u8"Permite VRR y tearing en pantalla completa cuando la "
+                 u8"pantalla lo soporta."),
+               T("Use when testing presentation latency or frame pacing.",
+                 u8"Use ao testar latência de apresentação ou pacing de frame.",
+                 u8"Úsalo al probar latencia de presentación o frame pacing."),
+               T("Displays without VRR may show tearing.",
+                 u8"Telas sem VRR podem mostrar tearing.",
+                 u8"Pantallas sin VRR pueden mostrar tearing."),
+                T("Do not use as a general crash workaround.",
+                  u8"Não use como correção geral de crash.",
+                  u8"No lo uses como corrección general de crashes."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_readback_resolve = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("d3d12_readback_resolve")->second);
-          if (ImGui::Checkbox("Readback Resolve",
+          const auto readback_resolve_label = Label(
+              T("Readback Resolve", u8"Readback de Resolve",
+                u8"Readback de Resolve"),
+              "d3d12_readback_resolve");
+          if (ImGui::Checkbox(readback_resolve_label.c_str(),
                               c_readback_resolve->current_value())) {
             c_readback_resolve->SetConfigValue(
                 !c_readback_resolve->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_readback_resolve->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Readback Resolve", u8"Readback de Resolve",
+                 u8"Readback de Resolve"),
+               T("Reads render-to-texture resolve results on the CPU.",
+                 u8"Lê no CPU resultados de resolve/render-to-texture.",
+                 u8"Lee en CPU resultados de resolve/render-to-texture."),
+               T("Test for missing text, invisible menus, screenshots in saves "
+                 "or effects depending on resolved textures.",
+                 u8"Teste para texto ausente, menus invisíveis, screenshots em "
+                 u8"saves ou efeitos que dependem de texturas resolvidas.",
+                 u8"Pruébalo con texto ausente, menús invisibles, screenshots "
+                 u8"en saves o efectos que dependen de texturas resueltas."),
+               T("Very high performance cost due to mid-frame synchronization.",
+                 u8"Custo de desempenho muito alto por sincronizar no meio do "
+                 u8"frame.",
+                 u8"Costo de rendimiento muy alto por sincronizar a mitad de "
+                 u8"frame."),
+                T("Prefer enabling only in per-game configs.",
+                  u8"Prefira ativar somente em configs por jogo.",
+                  u8"Prefiere activarlo solo en configs por juego."),
+                T("Game / Image / Performance", u8"Jogo / Imagem / Desempenho",
+                  u8"Juego / Imagen / Rendimiento")});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[Display]")) {
+        const auto display_tree = Label(T("[Display]", u8"[Tela]",
+                                          u8"[Pantalla]"),
+                                        "settings_display");
+        if (ImGui::TreeNode(display_tree.c_str())) {
+          auto c_internal_display_resolution =
+              dynamic_cast<cvar::ConfigVar<int32_t>*>(
+                  cvar::ConfigVars->find("internal_display_resolution")
+                      ->second);
+          int32_t internal_display_resolution_value =
+              c_internal_display_resolution->GetTypedConfigValue();
+          const auto internal_resolution_label = Label(
+              T("Internal Display Resolution",
+                u8"Resolução interna da tela",
+                u8"Resolución interna de pantalla"),
+              "internal_display_resolution");
+          if (ImGui::BeginCombo(
+                  internal_resolution_label.c_str(),
+                  InternalDisplayResolutionName(
+                      internal_display_resolution_value))) {
+            if (ImGui::Selectable("1280x720",
+                                  internal_display_resolution_value == 8)) {
+              c_internal_display_resolution->SetConfigValue(8);
+              config::SaveConfig();
+            }
+
+            if (ImGui::Selectable("848x480",
+                                  internal_display_resolution_value == 5)) {
+              c_internal_display_resolution->SetConfigValue(5);
+              config::SaveConfig();
+            }
+
+            if (ImGui::Selectable("720x480",
+                                  internal_display_resolution_value == 2)) {
+              c_internal_display_resolution->SetConfigValue(2);
+              config::SaveConfig();
+            }
+
+            if (ImGui::Selectable("640x480",
+                                  internal_display_resolution_value == 0)) {
+              c_internal_display_resolution->SetConfigValue(0);
+              config::SaveConfig();
+            }
+
+            ImGui::EndCombo();
+          }
+
+          SetHelpIfActive(
+              &setting_help,
+              {T("Internal Display Resolution",
+                 u8"Resolução interna da tela",
+                 u8"Resolución interna de pantalla"),
+               T("Changes the video mode reported to the guest game.",
+                 u8"Altera o modo de vídeo informado ao jogo guest.",
+                 u8"Cambia el modo de vídeo reportado al juego guest."),
+               T("Use lower resolutions to test whether a game can render below "
+                 "720p and reduce GPU load.",
+                 u8"Use resoluções menores para testar se um jogo consegue "
+                 u8"renderizar abaixo de 720p e reduzir carga na GPU.",
+                 u8"Usa resoluciones menores para probar si un juego puede "
+                 u8"renderizar por debajo de 720p y reducir carga en GPU."),
+               T("Only games that query the video mode will react; aspect ratio "
+                 "or HUD layout may change.",
+                 u8"Só jogos que consultam o modo de vídeo reagem; proporção "
+                 u8"ou layout da HUD podem mudar.",
+                 u8"Solo reaccionan juegos que consultan el modo de vídeo; "
+                 u8"pueden cambiar proporción o layout del HUD."),
+               T("Restart the game after changing this setting.",
+                 u8"Reinicie o jogo depois de alterar esta opção.",
+                 u8"Reinicia el juego después de cambiar esta opción."),
+               T("Game / Performance", u8"Jogo / Desempenho",
+                 u8"Juego / Rendimiento")});
+
           auto c_post_scaling = dynamic_cast<cvar::ConfigVar<std::string>*>(
               cvar::ConfigVars->find("postprocess_scaling_and_sharpening")
                   ->second);
           std::string c_post_scaling_value =
               c_post_scaling->GetTypedConfigValue();
-          if (ImGui::BeginCombo("Scaling & Sharpening Effect",
-                                (c_post_scaling_value == ""
-                                     ? "None"
-                                     : c_post_scaling_value.c_str()))) {
-            if (ImGui::Selectable("None", c_post_scaling_value == "")) {
+          const auto scaling_label = Label(
+              T("Scaling & Sharpening Effect",
+                u8"Efeito de escala e nitidez",
+                u8"Efecto de escalado y nitidez"),
+              "postprocess_scaling");
+          if (ImGui::BeginCombo(scaling_label.c_str(),
+                                ScalingEffectName(c_post_scaling_value))) {
+            if (ImGui::Selectable(T("None", u8"Nenhum", u8"Ninguno"),
+                                  c_post_scaling_value == "")) {
               c_post_scaling->SetConfigValue("");
               config::SaveConfig();
             }
@@ -1983,17 +2310,44 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndCombo();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_post_scaling->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Scaling & Sharpening Effect",
+                 u8"Efeito de escala e nitidez",
+                 u8"Efecto de escalado y nitidez"),
+               T("Chooses the post-processing effect used to resample or "
+                 "sharpen the final image.",
+                 u8"Escolhe o efeito de pós-processamento usado para "
+                 u8"reamostrar ou dar nitidez à imagem final.",
+                 u8"Elige el efecto de posprocesamiento usado para remuestrear "
+                 u8"o dar nitidez a la imagen final."),
+               T("Use CAS/FSR when upscaling or sharpening the output image.",
+                 u8"Use CAS/FSR ao ampliar ou dar nitidez à imagem final.",
+                 u8"Usa CAS/FSR al ampliar o dar nitidez a la imagen final."),
+               T("May make UI edges sharper or noisier depending on the game.",
+                 u8"Pode deixar bordas de UI mais nítidas ou ruidosas "
+                 u8"dependendo do jogo.",
+                 u8"Puede dejar bordes de UI más nítidos o ruidosos según el "
+                 u8"juego."),
+                T("Bilinear is safest; combine CAS/FSR with anti-aliasing if "
+                  "needed.",
+                  u8"Bilinear é mais seguro; combine CAS/FSR com anti-aliasing "
+                  u8"se necessário.",
+                  u8"Bilinear es lo más seguro; combina CAS/FSR con "
+                  u8"anti-aliasing si hace falta."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_post_aa = dynamic_cast<cvar::ConfigVar<std::string>*>(
               cvar::ConfigVars->find("postprocess_antialiasing")->second);
           std::string postaa_value = c_post_aa->GetTypedConfigValue();
-          if (ImGui::BeginCombo(
-                  "Anti-Aliasing",
-                  (postaa_value == "" ? "None" : postaa_value.c_str()))) {
-            if (ImGui::Selectable("None", postaa_value == "")) {
+          const auto aa_label = Label(T("Anti-Aliasing", u8"Anti-Aliasing",
+                                        u8"Anti-Aliasing"),
+                                      "postprocess_antialiasing");
+          if (ImGui::BeginCombo(aa_label.c_str(),
+                                AntiAliasingName(postaa_value))) {
+            if (ImGui::Selectable(T("None", u8"Nenhum", u8"Ninguno"),
+                                  postaa_value == "")) {
               c_post_aa->SetConfigValue("");
               config::SaveConfig();
             }
@@ -2012,23 +2366,63 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndCombo();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_post_aa->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Anti-Aliasing", u8"Anti-Aliasing", u8"Anti-Aliasing"),
+               T("Applies post-process anti-aliasing to the final game image.",
+                 u8"Aplica anti-aliasing por pós-processamento à imagem final "
+                 u8"do jogo.",
+                 u8"Aplica anti-aliasing por posprocesamiento a la imagen "
+                 u8"final del juego."),
+               T("Use to reduce jagged edges, especially with CAS or FSR.",
+                 u8"Use para reduzir serrilhado, especialmente com CAS ou FSR.",
+                 u8"Úsalo para reducir bordes dentados, especialmente con CAS "
+                 u8"o FSR."),
+               T("FXAA Extreme costs more than FXAA and can soften fine detail.",
+                 u8"FXAA Extreme custa mais que FXAA e pode suavizar detalhes "
+                 u8"finos.",
+                 u8"FXAA Extreme cuesta más que FXAA y puede suavizar detalles "
+                 u8"finos."),
+                T("Leave off for the sharpest untouched image.",
+                  u8"Deixe desligado para a imagem mais nítida sem alterações.",
+                  u8"Déjalo desactivado para la imagen más nítida sin cambios."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_cas_sharpness = dynamic_cast<cvar::ConfigVar<double>*>(
               cvar::ConfigVars->find("postprocess_ffx_cas_additional_sharpness")
                   ->second);
           float cas_additional = (float)c_cas_sharpness->GetTypedConfigValue();
-          if (ImGui::SliderFloat("CAS Additional Sharpness", &cas_additional, 0,
-                                 1.0f, "%f")) {
+          const auto cas_label = Label(T("CAS Additional Sharpness",
+                                         u8"Nitidez adicional do CAS",
+                                         u8"Nitidez adicional de CAS"),
+                                       "cas_additional_sharpness");
+          if (ImGui::SliderFloat(cas_label.c_str(), &cas_additional, 0, 1.0f,
+                                 "%f")) {
             c_cas_sharpness->SetConfigValue((double)cas_additional);
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_cas_sharpness->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("CAS Additional Sharpness", u8"Nitidez adicional do CAS",
+                 u8"Nitidez adicional de CAS"),
+               T("Controls extra sharpness for AMD FidelityFX CAS.",
+                 u8"Controla a nitidez extra do AMD FidelityFX CAS.",
+                 u8"Controla la nitidez extra de AMD FidelityFX CAS."),
+               T("Adjust when CAS/FSR looks too soft or too harsh.",
+                 u8"Ajuste quando CAS/FSR parecer suave demais ou agressivo "
+                 u8"demais.",
+                 u8"Ajústalo cuando CAS/FSR se vea demasiado suave o agresivo."),
+               T("Higher values can add ringing, noise or jagged UI edges.",
+                 u8"Valores maiores podem adicionar halo, ruído ou serrilhado "
+                 u8"na UI.",
+                 u8"Valores más altos pueden añadir halos, ruido o bordes "
+                 u8"dentados en la UI."),
+                T("Change gradually and compare still scenes.",
+                  u8"Altere aos poucos e compare cenas paradas.",
+                  u8"Cámbialo poco a poco y compara escenas estáticas."),
+                T("Image", u8"Imagem", u8"Imagen")});
 
           auto c_fsr_max_upsampling = dynamic_cast<cvar::ConfigVar<uint32_t>*>(
               cvar::ConfigVars
@@ -2038,7 +2432,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
               c_fsr_max_upsampling->GetTypedConfigValue();
           char value_label[32];
           snprintf(value_label, 32, "%dx", fsr_max_upsampling_value);
-          if (ImGui::BeginCombo("FSR Max Upsampling Passes", value_label)) {
+          const auto fsr_passes_label = Label(
+              T("FSR Max Upsampling Passes",
+                u8"Máximo de passes de upsampling FSR",
+                u8"Máximo de pasadas de upsampling FSR"),
+              "fsr_max_upsampling_passes");
+          if (ImGui::BeginCombo(fsr_passes_label.c_str(), value_label)) {
             if (ImGui::Selectable("1x", fsr_max_upsampling_value == 1)) {
               c_fsr_max_upsampling->SetConfigValue(1);
               config::SaveConfig();
@@ -2062,9 +2461,32 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndCombo();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_fsr_max_upsampling->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("FSR Max Upsampling Passes",
+                 u8"Máximo de passes de upsampling FSR",
+                 u8"Máximo de pasadas de upsampling FSR"),
+               T("Limits how many FSR upsampling passes run before bilinear "
+                 "stretching is used.",
+                 u8"Limita quantos passes de upsampling FSR rodam antes de "
+                 u8"usar alongamento bilinear.",
+                 u8"Limita cuántas pasadas de upsampling FSR se ejecutan "
+                 u8"antes de usar estiramiento bilinear."),
+               T("Useful only at high output resolutions such as 4K or 8K.",
+                 u8"Útil apenas em resoluções de saída altas, como 4K ou 8K.",
+                 u8"Útil solo en resoluciones de salida altas, como 4K u 8K."),
+               T("More passes can cost GPU time; fewer passes can soften the "
+                 "image.",
+                 u8"Mais passes podem custar GPU; menos passes podem suavizar "
+                 u8"a imagem.",
+                 u8"Más pasadas pueden costar GPU; menos pasadas pueden "
+                 u8"suavizar la imagen."),
+                T("Leave at default unless FSR is too expensive.",
+                  u8"Mantenha no padrão salvo se FSR estiver pesado demais.",
+                  u8"Déjalo en el valor predeterminado salvo que FSR sea muy "
+                  u8"pesado."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_fsr_sharpness_reduction =
               dynamic_cast<cvar::ConfigVar<double>*>(
@@ -2073,67 +2495,234 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
                       ->second);
           float cfsr_sharpness_reduction =
               (float)c_fsr_sharpness_reduction->GetTypedConfigValue();
-          if (ImGui::SliderFloat("FSR Sharpenss Reduction",
+          const auto fsr_sharpness_label = Label(
+              T("FSR Sharpness Reduction", u8"Redução de nitidez do FSR",
+                u8"Reducción de nitidez de FSR"),
+              "fsr_sharpness_reduction");
+          if (ImGui::SliderFloat(fsr_sharpness_label.c_str(),
                                  &cfsr_sharpness_reduction, 0, 1.0f, "%f")) {
             c_fsr_sharpness_reduction->SetConfigValue(
                 (double)cfsr_sharpness_reduction);
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_fsr_sharpness_reduction->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("FSR Sharpness Reduction", u8"Redução de nitidez do FSR",
+                 u8"Reducción de nitidez de FSR"),
+               T("Controls how much FSR sharpness is reduced.",
+                 u8"Controla quanto a nitidez do FSR é reduzida.",
+                 u8"Controla cuánto se reduce la nitidez de FSR."),
+               T("Adjust when FSR looks over-sharpened or too soft.",
+                 u8"Ajuste quando FSR parecer nítido demais ou suave demais.",
+                 u8"Ajústalo cuando FSR se vea demasiado nítido o demasiado "
+                 u8"suave."),
+               T("Lower values are sharper and may expose more artifacts.",
+                 u8"Valores menores são mais nítidos e podem expor mais "
+                 u8"artefatos.",
+                 u8"Valores más bajos son más nítidos y pueden mostrar más "
+                 u8"artefactos."),
+                T("Tune together with CAS sharpness.",
+                  u8"Ajuste junto com a nitidez do CAS.",
+                  u8"Ajústalo junto con la nitidez de CAS."),
+                T("Image", u8"Imagem", u8"Imagen")});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[GPU]")) {
+        const auto gpu_tree = Label("[GPU]", "settings_gpu");
+        if (ImGui::TreeNode(gpu_tree.c_str())) {
+          auto c_clear_memory_page = dynamic_cast<cvar::ConfigVar<bool>*>(
+              cvar::ConfigVars->find("clear_memory_page_state")->second);
+          const auto clear_memory_page_label = Label(
+              T("Clear Memory Page State",
+                u8"Limpar estado das páginas de memória",
+                u8"Limpiar estado de páginas de memoria"),
+              "clear_memory_page_state");
+          if (ImGui::Checkbox(clear_memory_page_label.c_str(),
+                              c_clear_memory_page->current_value())) {
+            c_clear_memory_page->SetConfigValue(
+                !c_clear_memory_page->GetTypedConfigValue());
+            config::SaveConfig();
+          }
+
+          SetHelpIfActive(
+              &setting_help,
+              {T("Clear Memory Page State",
+                 u8"Limpar estado das páginas de memória",
+                 u8"Limpiar estado de páginas de memoria"),
+               T("Refreshes memory page state so CPU-side code can see data "
+                 "written by the GPU.",
+                 u8"Atualiza o estado das páginas de memória para que código "
+                 u8"no CPU veja dados escritos pela GPU.",
+                 u8"Actualiza el estado de páginas de memoria para que código "
+                 u8"en CPU vea datos escritos por la GPU."),
+               T("Test for missing models or game logic depending on GPU-written "
+                 "data.",
+                 u8"Teste para modelos ausentes ou lógica do jogo dependente de "
+                 u8"dados escritos pela GPU.",
+                 u8"Pruébalo con modelos ausentes o lógica del juego dependiente "
+                 u8"de datos escritos por la GPU."),
+               T("Can affect timing and performance.",
+                 u8"Pode afetar timing e desempenho.",
+                 u8"Puede afectar timing y rendimiento."),
+                T("Prefer per-game testing and compare with the Forza baseline.",
+                  u8"Prefira teste por jogo e compare com o baseline do Forza.",
+                  u8"Prefiere pruebas por juego y compara con el baseline de "
+                  u8"Forza."),
+                T("Game / Performance / Diagnosis",
+                  u8"Jogo / Desempenho / Diagnóstico",
+                  u8"Juego / Rendimiento / Diagnóstico")});
+
           auto c_allow_invalid = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("gpu_allow_invalid_fetch_constants")
                   ->second);
-          if (ImGui::Checkbox("Allow Invalid Fetch Constants",
+          const auto allow_invalid_label = Label(
+              T("Allow Invalid Fetch Constants",
+                u8"Permitir constantes de fetch inválidas",
+                u8"Permitir constantes de fetch inválidas"),
+              "gpu_allow_invalid_fetch_constants");
+          if (ImGui::Checkbox(allow_invalid_label.c_str(),
                               c_allow_invalid->current_value())) {
             c_allow_invalid->SetConfigValue(
                 !c_allow_invalid->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_allow_invalid->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Allow Invalid Fetch Constants",
+                 u8"Permitir constantes de fetch inválidas",
+                 u8"Permitir constantes de fetch inválidas"),
+               T("Allows texture and vertex fetch constants even when their "
+                 "type looks invalid.",
+                 u8"Permite constantes de fetch de textura e vértice mesmo "
+                 u8"quando o tipo parece inválido.",
+                 u8"Permite constantes de fetch de textura y vértice aunque el "
+                 u8"tipo parezca inválido."),
+               T("Can bypass fetch constant errors while investigating the real "
+                 "cause.",
+                 u8"Pode contornar erros de fetch constant enquanto se investiga "
+                 u8"a causa real.",
+                 u8"Puede evitar errores de fetch constant mientras se investiga "
+                 u8"la causa real."),
+               T("Unsafe because invalid constants may contain arbitrary values.",
+                 u8"Arriscado porque constantes inválidas podem conter valores "
+                 u8"arbitrários.",
+                 u8"Arriesgado porque constantes inválidas pueden contener "
+                 u8"valores arbitrarios."),
+                T("Use as a temporary compatibility test, not as proof of a fix.",
+                  u8"Use como teste temporário de compatibilidade, não como "
+                  u8"prova de correção.",
+                  u8"Úsalo como prueba temporal de compatibilidad, no como "
+                  u8"prueba de corrección."),
+                T("Game / Image / Diagnosis", u8"Jogo / Imagem / Diagnóstico",
+                  u8"Juego / Imagen / Diagnóstico")});
 
           auto c_dxbc_switch = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("dxbc_switch")->second);
-          if (ImGui::Checkbox("DXBC Switch", c_dxbc_switch->current_value())) {
+          const auto dxbc_switch_label =
+              Label(T("DXBC Switch", u8"Switch DXBC", u8"Switch DXBC"),
+                    "dxbc_switch");
+          if (ImGui::Checkbox(dxbc_switch_label.c_str(),
+                              c_dxbc_switch->current_value())) {
             c_dxbc_switch->SetConfigValue(
                 !c_dxbc_switch->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_dxbc_switch->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("DXBC Switch", u8"Switch DXBC", u8"Switch DXBC"),
+               T("Uses switch instead of if for DXBC shader control flow.",
+                 u8"Usa switch em vez de if no fluxo de controle dos shaders "
+                 u8"DXBC.",
+                 u8"Usa switch en lugar de if para el flujo de control de "
+                 u8"shaders DXBC."),
+               T("Test when a title crashes during shader compilation or GPU "
+                 "draws on a specific driver.",
+                 u8"Teste quando um título trava durante compilação de shader "
+                 u8"ou draws GPU em um driver específico.",
+                 u8"Pruébalo cuando un título cierre durante compilación de "
+                 u8"shaders o draws GPU en un driver específico."),
+               T("Driver-dependent; may improve or hurt stability.",
+                 u8"Depende do driver; pode melhorar ou piorar estabilidade.",
+                 u8"Depende del driver; puede mejorar o empeorar estabilidad."),
+                T("Keep the default unless logs point to shader control flow.",
+                  u8"Mantenha o padrão salvo se logs apontarem para fluxo de "
+                  u8"controle de shader.",
+                  u8"Mantén el valor predeterminado salvo que los logs apunten "
+                  u8"a flujo de control de shader."),
+                T("Game / Image / Diagnosis", u8"Jogo / Imagem / Diagnóstico",
+                  u8"Juego / Imagen / Diagnóstico")});
 
           auto c2xmsaa = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("native_2x_msaa")->second);
-          if (ImGui::Checkbox("Native 2X MSAA", c2xmsaa->current_value())) {
+          const auto native_2x_msaa_label = Label(
+              T("Native 2X MSAA", u8"MSAA 2X nativo", u8"MSAA 2X nativo"),
+              "native_2x_msaa");
+          if (ImGui::Checkbox(native_2x_msaa_label.c_str(),
+                              c2xmsaa->current_value())) {
             c2xmsaa->SetConfigValue(!c2xmsaa->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c2xmsaa->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Native 2X MSAA", u8"MSAA 2X nativo",
+                 u8"MSAA 2X nativo"),
+               T("Uses host-native 2x MSAA when available.",
+                 u8"Usa MSAA 2x nativo do host quando disponível.",
+                 u8"Usa MSAA 2x nativo del host cuando esté disponible."),
+               T("Useful mostly for scalability or GPU path testing.",
+                 u8"Útil principalmente para testes de escalabilidade ou caminho "
+                 u8"de GPU.",
+                 u8"Útil principalmente para pruebas de escalabilidad o ruta de "
+                 u8"GPU."),
+               T("Disabling may use more memory and similar or worse quality.",
+                 u8"Desligar pode usar mais memória e qualidade similar ou pior.",
+                 u8"Desactivarlo puede usar más memoria y calidad similar o "
+                 u8"peor."),
+                T("Leave enabled unless comparing render target behavior.",
+                  u8"Mantenha ligado salvo ao comparar comportamento de render "
+                  u8"target.",
+                  u8"Déjalo activado salvo al comparar comportamiento de render "
+                  u8"target."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_vsync = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("vsync")->second);
-          if (ImGui::Checkbox("V-Sync", c_vsync->current_value())) {
+          const auto vsync_label = Label(T("V-Sync", u8"V-Sync", u8"V-Sync"),
+                                         "vsync");
+          if (ImGui::Checkbox(vsync_label.c_str(), c_vsync->current_value())) {
             c_vsync->SetConfigValue(!c_vsync->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_vsync->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("V-Sync", u8"V-Sync", u8"V-Sync"),
+               T("Synchronizes presentation to the display refresh.",
+                 u8"Sincroniza a apresentação com a taxa da tela.",
+                 u8"Sincroniza la presentación con la frecuencia de la pantalla."),
+               T("Use when validating pacing, tearing or presentation behavior.",
+                 u8"Use ao validar pacing, tearing ou comportamento de "
+                 u8"apresentação.",
+                 u8"Úsalo al validar pacing, tearing o comportamiento de "
+                 u8"presentación."),
+               T("Can hide whether performance is limited by rendering or "
+                 "presentation.",
+                 u8"Pode esconder se o desempenho está limitado por renderização "
+                 u8"ou apresentação.",
+                 u8"Puede ocultar si el rendimiento está limitado por renderizado "
+                 u8"o presentación."),
+                T("Keep enabled for normal use; disable only for focused tests.",
+                  u8"Mantenha ligado no uso normal; desligue só em testes "
+                  u8"focados.",
+                  u8"Déjalo activado en uso normal; desactívalo solo en pruebas "
+                  u8"concretas."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_scale_x = dynamic_cast<cvar::ConfigVar<int>*>(
               cvar::ConfigVars->find("draw_resolution_scale_x")->second);
@@ -2142,7 +2731,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
           int scale_value = c_scale_x->GetTypedConfigValue();
           char scale_value_label[32];
           snprintf(scale_value_label, 32, "%dx", scale_value);
-          if (ImGui::BeginCombo("Draw Resolution Scale", scale_value_label)) {
+          const auto resolution_scale_label = Label(
+              T("Draw Resolution Scale", u8"Escala de resolução de desenho",
+                u8"Escala de resolución de dibujo"),
+              "draw_resolution_scale");
+          if (ImGui::BeginCombo(resolution_scale_label.c_str(),
+                                scale_value_label)) {
             if (ImGui::Selectable("1x", scale_value == 1)) {
               c_scale_x->SetConfigValue(1);
               c_scale_y->SetConfigValue(1);
@@ -2164,20 +2758,44 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndCombo();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_scale_x->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Draw Resolution Scale", u8"Escala de resolução de desenho",
+                 u8"Escala de resolución de dibujo"),
+               T("Scales internal rendering resolution without telling the game.",
+                 u8"Escala a resolução interna de renderização sem informar o "
+                 u8"jogo.",
+                 u8"Escala la resolución interna de renderizado sin avisar al "
+                 u8"juego."),
+               T("Use 1x to isolate visual bugs or performance bottlenecks.",
+                 u8"Use 1x para isolar bugs visuais ou gargalos de desempenho.",
+                 u8"Usa 1x para aislar bugs visuales o cuellos de botella de "
+                 u8"rendimiento."),
+               T("Higher scales depend on device support and can break effects.",
+                 u8"Escalas maiores dependem do dispositivo e podem quebrar "
+                 u8"efeitos.",
+                 u8"Escalas mayores dependen del dispositivo y pueden romper "
+                 u8"efectos."),
+                T("Increase only after the game is stable at 1x.",
+                  u8"Aumente somente depois que o jogo estiver estável em 1x.",
+                  u8"Auméntalo solo después de que el juego esté estable en 1x."),
+                T("Image / Performance", u8"Imagem / Desempenho",
+                  u8"Imagen / Rendimiento")});
 
           auto c_render_target_path =
               dynamic_cast<cvar::ConfigVar<std::string>*>(
                   cvar::ConfigVars->find("render_target_path_d3d12")->second);
           std::string c_render_target_path_value =
               c_render_target_path->GetTypedConfigValue();
-          if (ImGui::BeginCombo("Render Target Path",
-                                (c_render_target_path_value == ""
-                                     ? "Any"
-                                     : c_render_target_path_value.c_str()))) {
-            if (ImGui::Selectable("Any", c_render_target_path_value == "")) {
+          const auto render_target_path_label = Label(
+              T("Render Target Path", u8"Caminho de render target",
+                u8"Ruta de render target"),
+              "render_target_path");
+          if (ImGui::BeginCombo(
+                  render_target_path_label.c_str(),
+                  RenderTargetPathName(c_render_target_path_value))) {
+            if (ImGui::Selectable(T("Any", u8"Qualquer", u8"Cualquiera"),
+                                  c_render_target_path_value == "")) {
               c_render_target_path->SetConfigValue("");
               config::SaveConfig();
             }
@@ -2195,126 +2813,334 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndCombo();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_render_target_path->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Render Target Path", u8"Caminho de render target",
+                 u8"Ruta de render target"),
+               T("Chooses the D3D12 render target emulation path: Any, RTV or "
+                 "ROV.",
+                 u8"Escolhe o caminho de emulação de render target no D3D12: "
+                 u8"Qualquer, RTV ou ROV.",
+                 u8"Elige la ruta de emulación de render target en D3D12: "
+                 u8"Cualquiera, RTV o ROV."),
+               T("Test when investigating render target accuracy, clears, "
+                 "blending or stencil issues.",
+                 u8"Teste ao investigar precisão de render target, clears, "
+                 u8"blending ou stencil.",
+                 u8"Pruébalo al investigar precisión de render target, clears, "
+                 u8"blending o stencil."),
+               T("RTV is faster but less accurate; ROV is more accurate, slower "
+                 "and may crash AMD shader compilers.",
+                 u8"RTV é mais rápido e menos preciso; ROV é mais preciso, mais "
+                 u8"lento e pode travar compiladores de shader AMD.",
+                 u8"RTV es más rápido y menos preciso; ROV es más preciso, más "
+                 u8"lento y puede cerrar compiladores de shader AMD."),
+                T("Use Any unless testing a specific render backend issue.",
+                  u8"Use Qualquer salvo ao testar um problema específico do "
+                  u8"backend de renderização.",
+                  u8"Usa Cualquiera salvo al probar un problema específico del "
+                  u8"backend de renderizado."),
+                T("Game / Image / Performance / Diagnosis",
+                  u8"Jogo / Imagem / Desempenho / Diagnóstico",
+                  u8"Juego / Imagen / Rendimiento / Diagnóstico")});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[Memory]")) {
+        const auto memory_tree = Label(T("[Memory]", u8"[Memória]",
+                                         u8"[Memoria]"),
+                                       "settings_memory");
+        if (ImGui::TreeNode(memory_tree.c_str())) {
           auto c_ignore_offset = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("ignore_offset_for_ranged_allocations")
                   ->second);
-          if (ImGui::Checkbox("Ignore Offset",
+          const auto ignore_offset_label = Label(
+              T("Ignore Offset", u8"Ignorar offset", u8"Ignorar offset"),
+              "ignore_offset_for_ranged_allocations");
+          if (ImGui::Checkbox(ignore_offset_label.c_str(),
                               c_ignore_offset->current_value())) {
             c_ignore_offset->SetConfigValue(
                 !c_ignore_offset->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_ignore_offset->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Ignore Offset", u8"Ignorar offset", u8"Ignorar offset"),
+               T("Ignores the 4 KB offset for physical ranged allocations.",
+                 u8"Ignora o offset de 4 KB em alocações físicas com range.",
+                 u8"Ignora el offset de 4 KB en asignaciones físicas con rango."),
+               T("Test if a title compares returned physical allocation "
+                 "addresses against the requested range.",
+                 u8"Teste se um título compara endereços físicos retornados com "
+                 u8"o range solicitado.",
+                 u8"Pruébalo si un título compara direcciones físicas devueltas "
+                 u8"con el rango solicitado."),
+               T("Can change guest memory layout assumptions.",
+                 u8"Pode alterar suposições de layout de memória guest.",
+                 u8"Puede cambiar supuestos de layout de memoria guest."),
+                T("Use only for allocation-related compatibility tests.",
+                  u8"Use apenas para testes de compatibilidade ligados a "
+                  u8"alocação.",
+                  u8"Úsalo solo para pruebas de compatibilidad relacionadas con "
+                  u8"asignación."),
+                T("Game / Diagnosis", u8"Jogo / Diagnóstico",
+                  u8"Juego / Diagnóstico")});
 
           auto c_protect_on_release = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("protect_on_release")->second);
-          if (ImGui::Checkbox("Protect On Release",
+          const auto protect_on_release_label = Label(
+              T("Protect On Release", u8"Proteger ao liberar",
+                u8"Proteger al liberar"),
+              "protect_on_release");
+          if (ImGui::Checkbox(protect_on_release_label.c_str(),
                               c_protect_on_release->current_value())) {
             c_protect_on_release->SetConfigValue(
                 !c_protect_on_release->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_protect_on_release->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Protect On Release", u8"Proteger ao liberar",
+                 u8"Proteger al liberar"),
+               T("Protects released memory so later accesses fail clearly.",
+                 u8"Protege memória liberada para que acessos posteriores "
+                 u8"falhem claramente.",
+                 u8"Protege memoria liberada para que accesos posteriores "
+                 u8"fallen claramente."),
+               T("Use to diagnose use-after-free or invalid memory access.",
+                 u8"Use para diagnosticar use-after-free ou acesso inválido à "
+                 u8"memória.",
+                 u8"Úsalo para diagnosticar use-after-free o acceso inválido a "
+                 u8"memoria."),
+               T("May turn silent corruption into a hard crash.",
+                 u8"Pode transformar corrupção silenciosa em crash direto.",
+                 u8"Puede convertir corrupción silenciosa en un crash directo."),
+                T("Diagnostic option, not a performance setting.",
+                  u8"Opção de diagnóstico, não de desempenho.",
+                  u8"Opción de diagnóstico, no de rendimiento."),
+                T("Diagnosis", u8"Diagnóstico", u8"Diagnóstico")});
 
           auto c_protect_zero = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("protect_zero")->second);
-          if (ImGui::Checkbox("Protect Zero",
+          const auto protect_zero_label = Label(
+              T("Protect Zero", u8"Proteger página zero",
+                u8"Proteger página cero"),
+              "protect_zero");
+          if (ImGui::Checkbox(protect_zero_label.c_str(),
                               c_protect_zero->current_value())) {
             c_protect_zero->SetConfigValue(
                 !c_protect_zero->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_protect_zero->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Protect Zero", u8"Proteger página zero",
+                 u8"Proteger página cero"),
+               T("Protects the zero page from reads and writes.",
+                 u8"Protege a página zero contra leitura e escrita.",
+                 u8"Protege la página cero contra lectura y escritura."),
+               T("Useful to catch null pointer accesses early.",
+                 u8"Útil para capturar acessos por ponteiro nulo cedo.",
+                 u8"Útil para capturar accesos por puntero nulo temprano."),
+               T("Disabling can hide invalid memory accesses.",
+                 u8"Desligar pode esconder acessos inválidos à memória.",
+                 u8"Desactivarlo puede ocultar accesos inválidos a memoria."),
+                T("Keep enabled unless testing one specific memory behavior.",
+                  u8"Mantenha ligado salvo ao testar um comportamento específico "
+                  u8"de memória.",
+                  u8"Manténlo activado salvo al probar un comportamiento "
+                  u8"específico de memoria."),
+                T("Diagnosis", u8"Diagnóstico", u8"Diagnóstico")});
 
           auto c_scribble_heap = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("scribble_heap")->second);
-          if (ImGui::Checkbox("Scribble Heap",
+          const auto scribble_heap_label = Label(
+              T("Scribble Heap", u8"Preencher heap", u8"Rellenar heap"),
+              "scribble_heap");
+          if (ImGui::Checkbox(scribble_heap_label.c_str(),
                               c_scribble_heap->current_value())) {
             c_scribble_heap->SetConfigValue(
                 !c_scribble_heap->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_scribble_heap->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Scribble Heap", u8"Preencher heap", u8"Rellenar heap"),
+               T("Fills allocated heap memory with 0xCD.",
+                 u8"Preenche memória de heap alocada com 0xCD.",
+                 u8"Rellena memoria heap asignada con 0xCD."),
+               T("Use to reveal dependencies on uninitialized memory.",
+                 u8"Use para revelar dependência de memória não inicializada.",
+                 u8"Úsalo para revelar dependencias de memoria no inicializada."),
+               T("Can change how bugs reproduce.",
+                 u8"Pode mudar como bugs reproduzem.",
+                 u8"Puede cambiar cómo se reproducen los bugs."),
+                T("Diagnostic only; do not leave as a permanent workaround.",
+                  u8"Apenas diagnóstico; não deixe como workaround permanente.",
+                  u8"Solo diagnóstico; no lo dejes como workaround permanente."),
+                T("Diagnosis", u8"Diagnóstico", u8"Diagnóstico")});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[Storage]")) {
+        const auto storage_tree = Label(T("[Storage]", u8"[Armazenamento]",
+                                          u8"[Almacenamiento]"),
+                                        "settings_storage");
+        if (ImGui::TreeNode(storage_tree.c_str())) {
           auto c_mount_cache = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("mount_cache")->second);
-          if (ImGui::Checkbox("Mount Cache", c_mount_cache->current_value())) {
+          const auto mount_cache_label = Label(
+              T("Mount Cache", u8"Montar cache", u8"Montar caché"),
+              "mount_cache");
+          if (ImGui::Checkbox(mount_cache_label.c_str(),
+                              c_mount_cache->current_value())) {
             c_mount_cache->SetConfigValue(
                 !c_mount_cache->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_mount_cache->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Mount Cache", u8"Montar cache", u8"Montar caché"),
+               T("Mounts the Xbox cache device.",
+                 u8"Monta o dispositivo de cache do Xbox.",
+                 u8"Monta el dispositivo de caché de Xbox."),
+               T("Keep enabled for games that expect cache storage.",
+                 u8"Mantenha ligado para jogos que esperam armazenamento de "
+                 u8"cache.",
+                 u8"Manténlo activado para juegos que esperan almacenamiento "
+                 u8"de caché."),
+               T("Wrong storage setup can break loading or saves.",
+                 u8"Configuração errada de storage pode quebrar loading ou "
+                 u8"saves.",
+                 u8"Una configuración incorrecta de storage puede romper "
+                 u8"loading o saves."),
+                T("Keep enabled in the base UWP config.",
+                  u8"Mantenha ligado na config base UWP.",
+                  u8"Manténlo activado en la config base UWP."),
+                T("Game / Diagnosis", u8"Jogo / Diagnóstico",
+                  u8"Juego / Diagnóstico")});
 
           auto c_mount_scratch = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("mount_scratch")->second);
-          if (ImGui::Checkbox("Mount Scratch",
+          const auto mount_scratch_label = Label(
+              T("Mount Scratch", u8"Montar scratch", u8"Montar scratch"),
+              "mount_scratch");
+          if (ImGui::Checkbox(mount_scratch_label.c_str(),
                               c_mount_scratch->current_value())) {
             c_mount_scratch->SetConfigValue(
                 !c_mount_scratch->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_mount_scratch->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Mount Scratch", u8"Montar scratch", u8"Montar scratch"),
+               T("Mounts the temporary scratch storage device.",
+                 u8"Monta o dispositivo de armazenamento temporário scratch.",
+                 u8"Monta el dispositivo de almacenamiento temporal scratch."),
+               T("Test only if a title appears to require temporary storage.",
+                 u8"Teste apenas se um título parecer exigir storage "
+                 u8"temporário.",
+                 u8"Pruébalo solo si un título parece requerir storage "
+                 u8"temporal."),
+               T("Can alter storage behavior and content paths.",
+                 u8"Pode alterar comportamento de storage e caminhos de "
+                 u8"conteúdo.",
+                 u8"Puede alterar comportamiento de storage y rutas de "
+                 u8"contenido."),
+                T("Leave disabled unless investigating a storage issue.",
+                  u8"Deixe desligado salvo ao investigar problema de storage.",
+                  u8"Déjalo desactivado salvo al investigar un problema de "
+                  u8"storage."),
+                T("Game / Diagnosis", u8"Jogo / Diagnóstico",
+                  u8"Juego / Diagnóstico")});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[UI]")) {
+        const auto ui_tree = Label(T("[UI]", u8"[Interface]", u8"[Interfaz]"),
+                                   "settings_ui");
+        if (ImGui::TreeNode(ui_tree.c_str())) {
           auto c_achievement_notif = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("show_achievement_notification")->second);
-          if (ImGui::Checkbox("Show Achievement Notification",
+          const auto achievement_label = Label(
+              T("Show Achievement Notification",
+                u8"Mostrar notificação de conquista",
+                u8"Mostrar notificación de logro"),
+              "show_achievement_notification");
+          if (ImGui::Checkbox(achievement_label.c_str(),
                               c_achievement_notif->current_value())) {
             c_achievement_notif->SetConfigValue(
                 !c_achievement_notif->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_achievement_notif->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Show Achievement Notification",
+                 u8"Mostrar notificação de conquista",
+                 u8"Mostrar notificación de logro"),
+               T("Shows an on-screen notification when an achievement unlocks.",
+                 u8"Mostra uma notificação na tela quando uma conquista é "
+                 u8"desbloqueada.",
+                 u8"Muestra una notificación en pantalla cuando se desbloquea "
+                 u8"un logro."),
+               T("Use when testing achievement UI feedback.",
+                 u8"Use ao testar feedback visual de conquistas.",
+                 u8"Úsalo al probar feedback visual de logros."),
+               T("UI-only; it should not affect game compatibility.",
+                 u8"Apenas UI; não deve afetar compatibilidade de jogos.",
+                 u8"Solo UI; no debería afectar compatibilidad de juegos."),
+                T("Enable based on user preference.",
+                  u8"Ative conforme preferência do usuário.",
+                  u8"Actívalo según preferencia del usuario."),
+                "UI"});
           ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("[x64]")) {
+        const auto x64_tree = Label("[x64]", "settings_x64");
+        if (ImGui::TreeNode(x64_tree.c_str())) {
           auto c_host_guest_stacksync = dynamic_cast<cvar::ConfigVar<bool>*>(
               cvar::ConfigVars->find("enable_host_guest_stack_synchronization")
                   ->second);
-          if (ImGui::Checkbox("Enable Host Guest Stack Synchronization",
+          const auto stack_sync_label = Label(
+              T("Enable Host Guest Stack Synchronization",
+                u8"Ativar sincronização de stack host/guest",
+                u8"Activar sincronización de stack host/guest"),
+              "enable_host_guest_stack_synchronization");
+          if (ImGui::Checkbox(stack_sync_label.c_str(),
                               c_host_guest_stacksync->current_value())) {
             c_host_guest_stacksync->SetConfigValue(
                 !c_host_guest_stacksync->GetTypedConfigValue());
             config::SaveConfig();
           }
 
-          if (ImGui::IsItemFocused()) {
-            tooltip = c_host_guest_stacksync->description();
-          }
+          SetHelpIfActive(
+              &setting_help,
+              {T("Enable Host Guest Stack Synchronization",
+                 u8"Ativar sincronização de stack host/guest",
+                 u8"Activar sincronización de stack host/guest"),
+               T("Records guest/host stack mappings and checks reentry at "
+                 "return sites.",
+                 u8"Registra mapeamentos de stack guest/host e checa reentry em "
+                 u8"pontos de retorno.",
+                 u8"Registra mapeos de stack guest/host y comprueba reentry en "
+                 u8"puntos de retorno."),
+               T("Test for crashes in games that use setjmp/longjmp.",
+                 u8"Teste para crashes em jogos que usam setjmp/longjmp.",
+                 u8"Pruébalo con crashes en juegos que usan setjmp/longjmp."),
+               T("Small performance impact.",
+                 u8"Pequeno impacto de desempenho.",
+                 u8"Pequeño impacto de rendimiento."),
+                T("Prefer per-game configs after confirming the crash pattern.",
+                  u8"Prefira configs por jogo após confirmar o padrão do crash.",
+                  u8"Prefiere configs por juego tras confirmar el patrón del "
+                  u8"crash."),
+                T("Game / Performance / Diagnosis",
+                  u8"Jogo / Desempenho / Diagnóstico",
+                  u8"Juego / Rendimiento / Diagnóstico")});
           ImGui::TreePop();
         }
 
@@ -2326,7 +3152,9 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
           config::SaveConfig();
         }
 
-        if (ImGui::Button("Set CL")) {
+        const auto set_cl_label =
+            Label(T("Set CL", u8"Definir CL", u8"Definir CL"), "set_cl");
+        if (ImGui::Button(set_cl_label.c_str())) {
           UWP::ShowKeyboard();
           ImGui::SetKeyboardFocusHere();
         }
@@ -2334,19 +3162,39 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         ImGui::SameLine();
         ImGui::InputText("##cl-text", cl_buffer, 128);
 
-        if (ImGui::IsItemFocused()) {
-          tooltip = cl->description();
-        }
+        SetHelpIfActive(
+            &setting_help,
+            {T("Set CL", u8"Definir CL", u8"Definir CL"),
+             T("Sets additional command-line text passed to the guest title.",
+               u8"Define texto adicional de linha de comando passado ao título "
+               u8"guest.",
+               u8"Define texto adicional de línea de comandos pasado al título "
+               u8"guest."),
+             T("Use only when a title or debug scenario needs explicit launch "
+               "arguments.",
+               u8"Use apenas quando um título ou cenário de debug precisar de "
+               u8"argumentos explícitos de inicialização.",
+               u8"Úsalo solo cuando un título o escenario de debug necesite "
+               u8"argumentos explícitos de inicio."),
+             T("Wrong arguments can change boot behavior or hide the real bug.",
+               u8"Argumentos errados podem alterar o boot ou esconder o bug "
+               u8"real.",
+               u8"Argumentos incorrectos pueden cambiar el arranque u ocultar "
+               u8"el bug real."),
+              T("Leave empty unless a test requires it.",
+                u8"Deixe vazio salvo se um teste exigir.",
+                u8"Déjalo vacío salvo que una prueba lo requiera."),
+              T("Game / Diagnosis", u8"Jogo / Diagnóstico",
+                u8"Juego / Diagnóstico")});
 
-        ImGui::Spacing();
-        ImGui::Separator();
-
-        ImGui::TextWrapped(tooltip.c_str());
+        DrawSettingHelp(setting_help);
 
         ImGui::EndTabItem();
       }
 
-      if (ImGui::BeginTabItem("Paths", nullptr)) {
+      const auto paths_tab = Label(T("Paths", u8"Caminhos", u8"Rutas"),
+                                   "tab_paths");
+      if (ImGui::BeginTabItem(paths_tab.c_str(), nullptr)) {
         if (ImGui::BeginListBox("##folders")) {
           for (auto path : UWP::GetPaths()) {
             if (ImGui::Selectable(path.c_str())) {
@@ -2361,7 +3209,10 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
           ImGui::BeginDisabled();
         }
 
-        if (ImGui::Button("Remove Path")) {
+        const auto remove_path_label =
+            Label(T("Remove Path", u8"Remover caminho", u8"Quitar ruta"),
+                  "remove_path");
+        if (ImGui::Button(remove_path_label.c_str())) {
           if (selectedPath != "") {
             XELOGI("UWP Remove Path clicked: path='{}'", selectedPath);
             auto paths = UWP::GetPaths();
@@ -2378,7 +3229,10 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Add Path")) {
+        const auto add_path_label =
+            Label(T("Add Path", u8"Adicionar caminho", u8"Agregar ruta"),
+                  "add_path");
+        if (ImGui::Button(add_path_label.c_str())) {
           XELOGI("UWP Add Path clicked");
           imgui_drawer()->SetIgnoreInput(true);
           UWP::SelectFolder([this](std::string path) {
@@ -2398,14 +3252,23 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Refresh List")) {
+        const auto refresh_list_label =
+            Label(T("Refresh List", u8"Atualizar lista", u8"Actualizar lista"),
+                  "refresh_list");
+        if (ImGui::Button(refresh_list_label.c_str())) {
           XELOGI("UWP Refresh List clicked");
           UWP::RefreshPaths();
         }
 
         ImGui::TextWrapped(
-            "Game List updates automatically after adding a folder. Use "
-            "Refresh List to rescan manually.");
+            "%s",
+            T("Game List updates automatically after adding a folder. Use "
+              "Refresh List to rescan manually.",
+              u8"A lista de jogos é atualizada automaticamente após adicionar "
+              u8"uma pasta. Use Atualizar lista para verificar manualmente.",
+              u8"La lista de juegos se actualiza automáticamente después de "
+              u8"agregar una carpeta. Usa Actualizar lista para escanear "
+              u8"manualmente."));
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -2420,13 +3283,21 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
             dynamic_cast<cvar::ConfigVar<std::filesystem::path>*>(
                 cvar::ConfigVars->find("storage_root")->second);
 
-        if (ImGui::Button("Set Config Folders Path")) {
+        const auto set_config_path_label = Label(
+            T("Set Config Folders Path",
+              u8"Definir caminho das pastas de configuração",
+              u8"Definir ruta de carpetas de configuración"),
+            "set_config_folders_path");
+        if (ImGui::Button(set_config_path_label.c_str())) {
           imgui_drawer()->SetIgnoreInput(true);
           UWP::SelectFolder([this, ccache_root, ccontent_root,
                              cstorage_root](std::string path) {
             if (path != "") {
               if (!UWP::TestPathPermissions(path)) {
-                ImGui::OpenPopup("Warning");
+                ImGui::OpenPopup(
+                    Label(T("Warning", u8"Aviso", u8"Advertencia"),
+                          "path_warning")
+                        .c_str());
               } else {
                 ccache_root->SetConfigValue(
                     std::filesystem::path(path + "\\cache"));
@@ -2443,7 +3314,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("Reset Config Folders Path")) {
+        const auto reset_config_path_label = Label(
+            T("Reset Config Folders Path",
+              u8"Redefinir caminho das pastas de configuração",
+              u8"Restablecer ruta de carpetas de configuración"),
+            "reset_config_folders_path");
+        if (ImGui::Button(reset_config_path_label.c_str())) {
           ccache_root->SetConfigValue("");
           ccontent_root->SetConfigValue("");
           cstorage_root->SetConfigValue("");
@@ -2452,25 +3328,43 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextWrapped(
-            "Note: Please remember to do your USB filesystem setup, or paths "
-            "to "
-            "your USB will not work properly!");
+        ImGui::TextWrapped("%s",
+                           T("Note: Please remember to do your USB filesystem "
+                             "setup, or paths to your USB will not work "
+                             "properly!",
+                             u8"Nota: lembre-se de configurar o sistema de "
+                             u8"arquivos USB, ou os caminhos para seu USB não "
+                             u8"funcionarão corretamente!",
+                             u8"Nota: recuerda configurar el sistema de "
+                             u8"archivos USB, o las rutas a tu USB no "
+                             u8"funcionarán correctamente!"));
 
         if (show_path_warning_) {
-          ImGui::OpenPopup("Warning");
+          ImGui::OpenPopup(Label(T("Warning", u8"Aviso", u8"Advertencia"),
+                                 "path_warning")
+                                .c_str());
           show_path_warning_ = false;
           ImGui::SetNextWindowSize(
               ImVec2(1600 * display_scale, 150 * display_scale));
         }
 
-        if (ImGui::BeginPopupModal("Warning")) {
-          ImGui::TextWrapped(
-              "The folder path you have selected is not writable! Please check "
-              "that you have the correct permissions for the folder you have "
-              "selected.");
+        const auto path_warning_label =
+            Label(T("Warning", u8"Aviso", u8"Advertencia"), "path_warning");
+        if (ImGui::BeginPopupModal(path_warning_label.c_str())) {
+          ImGui::TextWrapped("%s",
+                             T("The folder path you have selected is not "
+                               "writable! Please check that you have the "
+                               "correct permissions for the folder you have "
+                               "selected.",
+                               u8"O caminho de pasta selecionado não permite "
+                               u8"escrita. Verifique se você tem as permissões "
+                               u8"corretas para a pasta selecionada.",
+                               u8"La ruta de carpeta seleccionada no permite "
+                               u8"escritura. Comprueba que tienes los permisos "
+                               u8"correctos para la carpeta seleccionada."));
           ImGui::Separator();
-          if (ImGui::Button("OK")) {
+          if (ImGui::Button(Label(T("OK", "OK", "OK"), "path_warning_ok")
+                                .c_str())) {
             ImGui::CloseCurrentPopup();
           }
 
@@ -2480,27 +3374,99 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         ImGui::EndTabItem();
       }
 
-      if (ImGui::BeginTabItem("Extra", nullptr)) {
-        if (ImGui::Button("Install Additional Content..")) {
+      const auto language_tab = Label(T("Language", u8"Idioma", u8"Idioma"),
+                                      "tab_language");
+      if (ImGui::BeginTabItem(language_tab.c_str(), nullptr)) {
+        ImGui::TextWrapped(
+            "%s",
+            T("Choose the emulator interface language and the language reported "
+              "to games.",
+              u8"Escolha o idioma da interface do emulador e o idioma informado "
+              u8"aos jogos.",
+              u8"Elige el idioma de la interfaz del emulador y el idioma "
+              u8"reportado a los juegos."));
+
+        FrontendLanguage selected_language = GetFrontendLanguage();
+        const auto language_combo_label =
+            Label(T("Language", u8"Idioma", u8"Idioma"), "language_combo");
+        if (ImGui::BeginCombo(language_combo_label.c_str(),
+                              LanguageName(selected_language))) {
+          if (ImGui::Selectable(LanguageName(FrontendLanguage::kEnglish),
+                                selected_language ==
+                                    FrontendLanguage::kEnglish)) {
+            SetFrontendLanguage(FrontendLanguage::kEnglish);
+          }
+          if (ImGui::Selectable(
+                  LanguageName(FrontendLanguage::kPortugueseBrazil),
+                  selected_language ==
+                      FrontendLanguage::kPortugueseBrazil)) {
+            SetFrontendLanguage(FrontendLanguage::kPortugueseBrazil);
+          }
+          if (ImGui::Selectable(LanguageName(FrontendLanguage::kSpanishSpain),
+                                selected_language ==
+                                    FrontendLanguage::kSpanishSpain)) {
+            SetFrontendLanguage(FrontendLanguage::kSpanishSpain);
+          }
+          ImGui::EndCombo();
+        }
+
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "%s",
+            T("Running games may need to be restarted before they pick up the "
+              "new language.",
+              u8"Jogos já em execução podem precisar ser reiniciados para "
+              u8"reconhecer o novo idioma.",
+              u8"Los juegos en ejecución pueden necesitar reiniciarse para "
+              u8"reconocer el nuevo idioma."));
+
+        ImGui::EndTabItem();
+      }
+
+      const auto extra_tab = Label(T("Extra", u8"Extra", u8"Extra"),
+                                   "tab_extra");
+      if (ImGui::BeginTabItem(extra_tab.c_str(), nullptr)) {
+        const auto install_content_label = Label(
+            T("Install Additional Content..",
+              u8"Instalar conteúdo adicional..",
+              u8"Instalar contenido adicional.."),
+            "install_additional_content");
+        if (ImGui::Button(install_content_label.c_str())) {
           emulator_window_.installing_additional_content_ = true;
           emulator_window_.InstallContent();
         }
 
-        if (ImGui::Button("Open File..")) {
+        const auto open_file_label =
+            Label(T("Open File..", u8"Abrir arquivo..", u8"Abrir archivo.."),
+                  "open_file");
+        if (ImGui::Button(open_file_label.c_str())) {
           emulator_window_.FileOpen();
         }
 
         if (emulator_window_.installing_additional_content_ &&
-            !ImGui::IsPopupOpen("Installing..")) {
-          ImGui::OpenPopup("Installing..");
+            !ImGui::IsPopupOpen(
+                Label(T("Installing..", u8"Instalando..", u8"Instalando.."),
+                      "installing_popup")
+                    .c_str())) {
+          ImGui::OpenPopup(
+              Label(T("Installing..", u8"Instalando..", u8"Instalando.."),
+                    "installing_popup")
+                  .c_str());
           ImGui::SetNextWindowSize(
               ImVec2(1600 * display_scale, 150 * display_scale));
         }
 
-        if (ImGui::BeginPopupModal("Installing..")) {
-          ImGui::TextWrapped(
-              "Installing custom content. Please hold, this may take up to 30 "
-              "seconds.");
+        const auto installing_popup_label =
+            Label(T("Installing..", u8"Instalando..", u8"Instalando.."),
+                  "installing_popup");
+        if (ImGui::BeginPopupModal(installing_popup_label.c_str())) {
+          ImGui::TextWrapped("%s",
+                             T("Installing custom content. Please hold, this "
+                               "may take up to 30 seconds.",
+                               u8"Instalando conteúdo personalizado. Aguarde, "
+                               u8"isso pode levar até 30 segundos.",
+                               u8"Instalando contenido personalizado. Espera, "
+                               u8"esto puede tardar hasta 30 segundos."));
 
           if (!emulator_window_.installing_additional_content_) {
             ImGui::CloseCurrentPopup();
@@ -2512,18 +3478,47 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         ImGui::EndTabItem();
       }
 
-      if (ImGui::BeginTabItem("About", nullptr)) {
+      const auto about_tab = Label(T("About", u8"Sobre", u8"Acerca de"),
+                                   "tab_about");
+      if (ImGui::BeginTabItem(about_tab.c_str(), nullptr)) {
         ImGui::TextWrapped(
-            "Xenia UWP 1.1.5a\nA fork of Xenia introducing Xbox support and a "
-            "big "
-            "picture frontend.\n\n"
-            "Xenia's Website: https://xenia.jp/\n"
-            "Xenia's Patreon: https://www.patreon.com/xenia_project\n\n"
-            "This Xbox fork was developed by SirMangler.\n"
-            "Support me on Ko-Fi: https://ko-fi.com/sirmangler\n"
-            "Source Code: https://github.com/SirMangler/xenia/\n\n"
-            "Big thanks to TXF for creating the background, as well as to "
-            "Reverie and TRW for extensive testing and moral support!");
+            "%s",
+            T("Xenia Canary UWP Pro 1.3.0.0\nAn unofficial UWP/Xbox fork "
+              "based on Xenia Canary and the SirMangler UWP frontend.\n\n"
+              "Xenia's Website: https://xenia.jp/\n"
+              "Xenia's Patreon: https://www.patreon.com/xenia_project\n\n"
+              "Project Repository: "
+              "https://github.com/ruanbrit0/xenia-uwp-pro\n"
+              "Original UWP/Xbox Fork: "
+              "https://github.com/SirMangler/xenia/\n\n"
+              "Xenia is not affiliated with Microsoft. Xbox is a trademark of "
+              "Microsoft.\n\n"
+              "Credits to SirMangler for the UWP/Xbox fork, TXF for the "
+              "background, and Reverie/TRW for testing and support.",
+              u8"Xenia Canary UWP Pro 1.3.0.0\nFork UWP/Xbox não oficial "
+              u8"baseado no Xenia Canary e no frontend UWP do SirMangler.\n\n"
+              u8"Site do Xenia: https://xenia.jp/\n"
+              u8"Patreon do Xenia: https://www.patreon.com/xenia_project\n\n"
+              u8"Repositório do projeto: "
+              u8"https://github.com/ruanbrit0/xenia-uwp-pro\n"
+              u8"Fork UWP/Xbox original: "
+              u8"https://github.com/SirMangler/xenia/\n\n"
+              u8"Xenia não é afiliado à Microsoft. Xbox é uma marca da "
+              u8"Microsoft.\n\n"
+              u8"Créditos a SirMangler pelo fork UWP/Xbox, a TXF pelo plano "
+              u8"de fundo, e a Reverie/TRW pelos testes e apoio.",
+              u8"Xenia Canary UWP Pro 1.3.0.0\nFork UWP/Xbox no oficial "
+              u8"basado en Xenia Canary y en el frontend UWP de SirMangler.\n\n"
+              u8"Sitio web de Xenia: https://xenia.jp/\n"
+              u8"Patreon de Xenia: https://www.patreon.com/xenia_project\n\n"
+              u8"Repositorio del proyecto: "
+              u8"https://github.com/ruanbrit0/xenia-uwp-pro\n"
+              u8"Fork UWP/Xbox original: "
+              u8"https://github.com/SirMangler/xenia/\n\n"
+              u8"Xenia no está afiliado con Microsoft. Xbox es una marca de "
+              u8"Microsoft.\n\n"
+              u8"Créditos a SirMangler por el fork UWP/Xbox, a TXF por el "
+              u8"fondo, y a Reverie/TRW por las pruebas y el apoyo."));
 
         ImGui::EndTabItem();
       }
@@ -2545,15 +3540,27 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
     } catch (const std::exception& e) {
       XELOGE("UWP frontend launch failed with exception: {}", e.what());
       xe::ui::ImGuiDialog::ShowMessageBox(
-          imgui_drawer(), "Title Launch Failed!",
-          "Failed to launch title due to an internal error.\n\n"
-          "Check xenia.log for technical details.");
+          imgui_drawer(),
+          T("Title Launch Failed!", u8"Falha ao iniciar título!",
+            u8"Error al iniciar el título!"),
+          T("Failed to launch title due to an internal error.\n\n"
+            "Check xenia.log for technical details.",
+            u8"Falha ao iniciar o título devido a um erro interno.\n\n"
+            u8"Verifique xenia.log para detalhes técnicos.",
+            u8"No se pudo iniciar el título debido a un error interno.\n\n"
+            u8"Consulta xenia.log para ver detalles técnicos."));
     } catch (...) {
       XELOGE("UWP frontend launch failed with unknown exception");
       xe::ui::ImGuiDialog::ShowMessageBox(
-          imgui_drawer(), "Title Launch Failed!",
-          "Failed to launch title due to an unknown internal error.\n\n"
-          "Check xenia.log for technical details.");
+          imgui_drawer(),
+          T("Title Launch Failed!", u8"Falha ao iniciar título!",
+            u8"Error al iniciar el título!"),
+          T("Failed to launch title due to an unknown internal error.\n\n"
+            "Check xenia.log for technical details.",
+            u8"Falha ao iniciar o título devido a um erro interno desconhecido."
+            u8"\n\nVerifique xenia.log para detalhes técnicos.",
+            u8"No se pudo iniciar el título debido a un error interno "
+            u8"desconocido.\n\nConsulta xenia.log para ver detalles técnicos."));
     }
   }
 }

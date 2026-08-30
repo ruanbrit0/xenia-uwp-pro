@@ -187,7 +187,7 @@ class EmulatorWindow {
       auto cl = dynamic_cast<cvar::ConfigVar<std::string>*>(
           cvar::ConfigVars->find("cl")->second);
       std::string cl_text = (std::string)cl->GetTypedConfigValue();
-      memcpy(cl_buffer, cl_text.data(), std::min((int)cl_text.size(), 128));
+      cl_text.copy(cl_buffer, sizeof(cl_buffer) - 1);
     }
 
    protected:
@@ -200,7 +200,7 @@ class EmulatorWindow {
     std::shared_ptr<ui::ImmediateTexture> background_tex_ = nullptr;
     std::string selectedPath;
     bool ignoreInput = false;
-    char cl_buffer[128];
+    char cl_buffer[128] = {};
     bool show_path_warning_ = false;
   };
 #endif

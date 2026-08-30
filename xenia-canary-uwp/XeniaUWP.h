@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <tuple>
@@ -26,5 +27,6 @@ std::vector<std::tuple<std::string, std::string>> GetGames();
 std::vector<std::string> GetPaths();
 void SetGamePaths(std::vector<std::string> paths);
 bool IsScanningGamePaths();
+uint64_t GetGameScanFoundCount();
 std::string GetGameScanStatus();
 }

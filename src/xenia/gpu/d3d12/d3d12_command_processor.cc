@@ -49,10 +49,6 @@ DEFINE_bool(d3d12_submit_on_primary_buffer_end, true,
             "Submit the command list when a PM4 primary buffer ends if it's "
             "possible to submit immediately to try to reduce frame latency.",
             "D3D12");
-DEFINE_bool(d3d12_clear_memory_page_state, true,
-            "Refresh state of memory pages to enable gpu written data. (Use "
-            "for 'Team Ninja' Games to fix missing character models)",
-            "D3D12");
 
 DECLARE_bool(clear_memory_page_state);
 

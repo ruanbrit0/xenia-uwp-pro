@@ -286,6 +286,8 @@ std::vector<std::string> UWP::GetPaths() {
 
 bool UWP::IsScanningGamePaths() { return s_scanning_game_paths.load(); }
 
+uint64_t UWP::GetGameScanFoundCount() { return s_scan_games_found.load(); }
+
 std::string UWP::GetGameScanStatus() {
   if (!s_scanning_game_paths.load()) {
     return "Idle";
