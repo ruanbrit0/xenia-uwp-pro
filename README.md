@@ -6,7 +6,7 @@ Xenia Canary UWP is an unofficial fork of Xenia Canary to support UWP and the Xb
 
 Este repositorio mantem o app UWP em `xenia-canary-uwp/` em cima do Xenia Canary, com ajustes especificos para rodar em UWP/Xbox. O foco atual e estabilizar inicializacao, acesso a arquivos, perfil de usuario, montagem de conteudo/cache e chamadas de kernel usadas por titulos retail.
 
-A base atual e `1.3.0` (`1.3.0.0` no manifesto). Ela preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes e diagnostico.
+A base atual e `1.3.1` (`1.3.1.0` no manifesto). Ela preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes, diagnostico e busca de jogos.
 
 O port ainda e experimental. Mesmo quando titulos retail avancam alem da introducao, ainda podem ocorrer lags, FPS baixo, travamentos, congelamentos ou loading preso durante a entrada no gameplay.
 
@@ -197,13 +197,13 @@ Depois pressione `F5` para executar localmente.
 Apos o build UWP, o pacote fica em:
 
 ```text
-xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.0.0_Debug_Test/
+xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.1.0_Debug_Test/
 ```
 
 Bundle esperado:
 
 ```text
-xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.0.0_Debug_Test/xenia-canary-uwp_1.3.0.0_x64_Debug.appxbundle
+xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.1.0_Debug_Test/xenia-canary-uwp_1.3.1.0_x64_Debug.appxbundle
 ```
 
 ### Configs Padrao Por Jogo
@@ -247,7 +247,7 @@ Manifesto atual:
 
 ```text
 Publisher="CN=SirMangler"
-Version="1.3.0.0"
+Version="1.3.1.0"
 ```
 
 ### Build Desktop

@@ -24,6 +24,7 @@ void UpdateImGuiIO();
 
 void RefreshPaths();
 std::vector<std::tuple<std::string, std::string>> GetGames();
+uint64_t GetGameListVersion();
 std::vector<std::string> GetPaths();
 void SetGamePaths(std::vector<std::string> paths);
 bool IsScanningGamePaths();

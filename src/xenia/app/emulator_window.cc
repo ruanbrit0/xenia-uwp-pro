@@ -10,13 +10,17 @@
 #include "xenia/app/emulator_window.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "third_party/cpptoml/include/cpptoml.h"
 #include "third_party/fmt/include/fmt/format.h"
@@ -2030,11 +2034,18 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
                                           u8"Lista de juegos"),
                                         "tab_game_list");
       if (ImGui::BeginTabItem(game_list_tab.c_str(), nullptr)) {
-        auto games = UWP::GetGames();
+        static uint64_t cached_game_list_version =
+            std::numeric_limits<uint64_t>::max();
+        static std::vector<std::tuple<std::string, std::string>> cached_games;
+        const uint64_t game_list_version = UWP::GetGameListVersion();
+        if (cached_game_list_version != game_list_version) {
+          cached_games = UWP::GetGames();
+          cached_game_list_version = game_list_version;
+        }
+        const auto& games = cached_games;
         const bool is_scanning = UWP::IsScanningGamePaths();
-        const uint64_t game_count = is_scanning
-                                        ? UWP::GetGameScanFoundCount()
-                                        : static_cast<uint64_t>(games.size());
+        const uint64_t game_count = static_cast<uint64_t>(games.size());
+        const uint64_t scan_found_count = UWP::GetGameScanFoundCount();
         ImGui::Text("%s: %llu%s",
                     T("Total Games", u8"Total de jogos", u8"Juegos totales"),
                     static_cast<unsigned long long>(game_count),
@@ -2048,7 +2059,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
                               T("Scanning game paths",
                                 u8"Verificando pastas de jogos",
                                 u8"Escaneando carpetas de juegos"),
-                              game_count,
+                              scan_found_count,
                               T("games found", u8"jogos encontrados",
                                 u8"juegos encontrados"))
                 : T("Idle", u8"Ocioso", u8"Inactivo");
@@ -2068,15 +2079,24 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
                         u8"Rutas o actualiza la lista."));
           }
 
-          for (const auto& set : games) {
-            std::string path, filename;
-            std::tie(path, filename) = set;
+          ImGuiListClipper clipper;
+          clipper.Begin(static_cast<int>(games.size()));
+          while (clipper.Step()) {
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+              const auto& set = games[static_cast<size_t>(i)];
+              const std::string& path = std::get<0>(set);
+              const std::string& filename = std::get<1>(set);
 
-            ImGui::PushID(path.c_str());
-            if (ImGui::Selectable(filename.c_str())) {
-              title_to_launch = path;
+              ImGui::PushID(path.c_str());
+              if (ImGui::Selectable(filename.c_str())) {
+                title_to_launch = path;
+              }
+              ImGui::PopID();
+
+              if (title_to_launch) {
+                break;
+              }
             }
-            ImGui::PopID();
 
             if (title_to_launch) {
               break;
@@ -3483,7 +3503,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
       if (ImGui::BeginTabItem(about_tab.c_str(), nullptr)) {
         ImGui::TextWrapped(
             "%s",
-            T("Xenia Canary UWP Pro 1.3.0.0\nAn unofficial UWP/Xbox fork "
+            T("Xenia Canary UWP Pro 1.3.1.0\nAn unofficial UWP/Xbox fork "
               "based on Xenia Canary and the SirMangler UWP frontend.\n\n"
               "Xenia's Website: https://xenia.jp/\n"
               "Xenia's Patreon: https://www.patreon.com/xenia_project\n\n"
@@ -3495,7 +3515,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
               "Microsoft.\n\n"
               "Credits to SirMangler for the UWP/Xbox fork, TXF for the "
               "background, and Reverie/TRW for testing and support.",
-              u8"Xenia Canary UWP Pro 1.3.0.0\nFork UWP/Xbox não oficial "
+              u8"Xenia Canary UWP Pro 1.3.1.0\nFork UWP/Xbox não oficial "
               u8"baseado no Xenia Canary e no frontend UWP do SirMangler.\n\n"
               u8"Site do Xenia: https://xenia.jp/\n"
               u8"Patreon do Xenia: https://www.patreon.com/xenia_project\n\n"
@@ -3507,7 +3527,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
               u8"Microsoft.\n\n"
               u8"Créditos a SirMangler pelo fork UWP/Xbox, a TXF pelo plano "
               u8"de fundo, e a Reverie/TRW pelos testes e apoio.",
-              u8"Xenia Canary UWP Pro 1.3.0.0\nFork UWP/Xbox no oficial "
+              u8"Xenia Canary UWP Pro 1.3.1.0\nFork UWP/Xbox no oficial "
               u8"basado en Xenia Canary y en el frontend UWP de SirMangler.\n\n"
               u8"Sitio web de Xenia: https://xenia.jp/\n"
               u8"Patreon de Xenia: https://www.patreon.com/xenia_project\n\n"
