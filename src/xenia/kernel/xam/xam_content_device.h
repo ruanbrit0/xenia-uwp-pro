@@ -34,6 +34,18 @@ struct DummyDeviceInfo {
   const std::u16string_view name;
 };
 
+struct X_CONTENT_DEVICE_DATA {
+  xe::be<uint32_t> device_id;
+  xe::be<uint32_t> device_type;
+  xe::be<uint64_t> total_bytes;
+  xe::be<uint64_t> free_bytes;
+  union {
+    xe::be<uint16_t> name[28];
+    char16_t name_chars[28];
+  };
+};
+static_assert_size(X_CONTENT_DEVICE_DATA, 0x50);
+
 const DummyDeviceInfo* GetDummyDeviceInfo(uint32_t device_id);
 
 }  // namespace xam

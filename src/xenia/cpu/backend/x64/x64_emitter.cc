@@ -1140,6 +1140,7 @@ static const vec128_t xmm_consts[] = {
     /* XMMIntMin              */ vec128i(INT_MIN),
     /* XMMIntMax              */ vec128i(INT_MAX),
     /* XMMIntMaxPD            */ vec128d(INT_MAX),
+    /* XMMPosLongMinPD        */ vec128d(0x1.0p63),
     /* XMMPosIntMinPS         */ vec128f((float)0x80000000u),
     /* XMMQNaN                */ vec128i(0x7FC00000u),
     /* XMMInt127              */ vec128i(0x7Fu),

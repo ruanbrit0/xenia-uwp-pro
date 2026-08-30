@@ -57,6 +57,7 @@ class XContentContainerEntry : public Entry {
   const std::vector<BlockRecord>& block_list() const { return block_list_; }
 
  private:
+  friend struct XContentContainerEntryTestPeer;
   friend class StfsContainerDevice;
   friend class SvodContainerDevice;
 

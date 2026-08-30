@@ -5,6 +5,9 @@
 The [Xenos](https://en.wikipedia.org/wiki/Xenos_\(graphics_chip\)) is a graphics
 chip designed by AMD based off of the R5xx architecture.
 
+For UWP/Xbox optimization notes derived from public Xbox 360 hardware analysis,
+see [Xbox 360 Architecture Optimization Notes](xbox_360_optimization_notes.md).
+
 ### Command Processing
 
 The Xenos runs commands supplied to it directly by the DirectX bare-bones driver
@@ -15,8 +18,21 @@ The bulk of the command processing code is located at
 
 ### EDRAM
 
-The Xenos uses special high-speed memory located on the same die as the chip to 
+The Xenos uses special high-speed memory located on the same die as the chip to
 store framebuffers/render targets.
+
+For performance investigation, treat EDRAM behavior, tiled rendering, render
+target resolves, MRT and memexport as high-impact areas. Readbacks such as
+`d3d12_readback_resolve` and `d3d12_readback_memexport` should stay disabled by
+default and be enabled per game only when they fix a documented visual or data
+dependency issue.
+
+Public Xenia GPU notes in
+[Xbox 360 Architecture Optimization Notes](xbox_360_optimization_notes.md)
+explain why EDRAM aliasing, resolves, tiled texture memory and render-to-texture
+are common sources of visual issues. Use those notes to decide whether to test
+`d3d12_readback_resolve`, `d3d12_readback_memexport` or
+`render_target_path_d3d12` before changing renderer code.
 
 TODO: More documentation
 

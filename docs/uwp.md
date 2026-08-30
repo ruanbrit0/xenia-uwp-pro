@@ -4,7 +4,7 @@ Este documento descreve o fluxo local deste fork UWP. O build desktop herdado do
 
 ## Versao Atual
 
-A base atual e `1.3.2` (`1.3.2.0` no manifesto). Esta versao preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes, diagnostico e busca de jogos. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
+A base atual e `1.3.3` (`1.3.3.0` no manifesto). Esta versao preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes, diagnostico e busca de jogos. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
 
 ## Requisitos
 
@@ -58,7 +58,7 @@ Target -> Local Machine
 O pacote Debug de teste e gerado em:
 
 ```text
-xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.2.0_Debug_Test/
+xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.3.0_Debug_Test/
 ```
 
 Artefatos em `xenia-canary-uwp/AppPackages/`, `xenia-canary-uwp/x64/` e `xenia-canary-uwp/xenia-canary-uwp/` sao saida local de build e nao devem ser commitados.
@@ -77,6 +77,23 @@ O manifesto nao usa `runFullTrust`. Ele ainda declara `broadFileSystemAccess`, `
 - Nao troque essas referencias para `Debug Windows|x64`; o build UWP precisa de `XE_PLATFORM_WINRT=1`.
 - O Debug UWP usa runtime Release compativel com as libs geradas (`/MD`, `_ITERATOR_DEBUG_LEVEL=0`). Mudar para runtime Debug reintroduz conflito `LNK2038`.
 - Se `Microsoft.Windows.CppWinRT.2.0.250303.1` faltar em `build/packages/`, restaure os pacotes NuGet antes de buildar o projeto UWP.
+- Para performance no Xbox, usar `720p` como baseline, evitar readbacks globais
+  de GPU e preferir configs por jogo para flags caras. Ver tambem
+  `docs/xbox_360_optimization_notes.md`.
+
+## Constraints UWP/Xbox Para Compatibilidade
+
+- O diretorio instalado do pacote e somente leitura; dados mutaveis devem ficar
+  em `LocalState`.
+- Configs padrao empacotadas devem ser lidas do install location e copiadas para
+  `LocalState/config/<TITLEID>.config.toml` sem sobrescrever arquivos do usuario.
+- `broadFileSystemAccess` e uma capability restrita e nao deve ser tratada como
+  solucao garantida no Xbox.
+- Flags caras ou experimentais, principalmente readbacks D3D12, devem ser
+  ativadas por jogo e documentadas com sintoma, Title ID e custo de FPS.
+- O exemplo atual e Portal 2 (`45410912`), que usa
+  `d3d12_readback_resolve = true` por config empacotada para corrigir
+  texto/menu invisivel causado por resolve de render-to-texture.
 
 ## Mudancas UWP Mantidas Neste Fork
 
@@ -97,12 +114,18 @@ Build desktop padrao:
 .\xb.ps1 build
 ```
 
-Testes padrao, quando o ambiente local estiver confiavel:
+Testes padrao, quando o ambiente local estiver confiavel. Em ambiente limpo,
+gere os binarios PPC antes de rodar a suite padrao:
 
 ```powershell
+.\xb.ps1 gentests
 .\xb.ps1 test
 ```
 
-Para validar UWP, a verificacao mais importante e instalar o pacote no alvo real e coletar logs do app. Se o log parar logo depois do `CONFIG DUMP`, confira o `log_level` da configuracao local antes de concluir que nao houve falha em runtime.
+Esses testes validam partes desktop/core. Para validar UWP, a verificacao mais
+importante e instalar o pacote no alvo real e coletar logs do app. Se o log
+parar logo depois do `CONFIG DUMP`, confira o `log_level` da configuracao local
+antes de concluir que nao houve falha em runtime. O fluxo completo esta em
+`docs/testing.md`.
 
 Logs locais copiados do Xbox podem ficar em `logsxbox/`. Essa pasta e ignorada pelo Git e nao deve ser commitada.

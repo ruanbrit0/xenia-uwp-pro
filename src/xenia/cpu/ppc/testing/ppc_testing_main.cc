@@ -8,6 +8,7 @@
  */
 
 #include "xenia/base/console_app_main.h"
+
 #include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/literals.h"
@@ -194,6 +195,9 @@ class TestRunner {
   }
 
   bool Setup(TestSuite& suite) {
+    thread_state_.reset();
+    processor_.reset();
+
     // Reset memory.
     memory_->Reset();
 
@@ -269,7 +273,11 @@ class TestRunner {
     if (!result) {
       // Also dump all disasm/etc.
       if (fn->is_guest()) {
-        static_cast<xe::cpu::GuestFunction*>(fn)->debug_info()->Dump();
+        auto debug_info =
+            static_cast<xe::cpu::GuestFunction*>(fn)->debug_info();
+        if (debug_info) {
+          debug_info->Dump();
+        }
       }
     }
 

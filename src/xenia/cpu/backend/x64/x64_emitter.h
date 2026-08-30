@@ -147,6 +147,7 @@ enum XmmConst {
   XMMIntMin,
   XMMIntMax,
   XMMIntMaxPD,
+  XMMPosLongMinPD,
   XMMPosIntMinPS,
   XMMQNaN,
   XMMInt127,

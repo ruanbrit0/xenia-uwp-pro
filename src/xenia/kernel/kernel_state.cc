@@ -93,6 +93,48 @@ KernelState::KernelState(Emulator* emulator)
   xam::AppManager::RegisterApps(this, app_manager_.get());
 }
 
+KernelState::KernelState(Emulator* emulator, Memory* memory,
+                         cpu::Processor* processor,
+                         vfs::VirtualFileSystem* file_system,
+                         const std::filesystem::path& content_root)
+    : emulator_(emulator),
+      memory_(memory),
+      processor_(processor),
+      file_system_(file_system),
+      dispatch_thread_running_(false),
+      dpc_list_(memory),
+      kernel_trampoline_group_(processor->backend()) {
+  assert_null(shared_kernel_state_);
+  shared_kernel_state_ = this;
+
+  app_manager_ = std::make_unique<xam::AppManager>();
+  achievement_manager_ = std::make_unique<AchievementManager>();
+  user_profiles_.emplace(0, std::make_unique<xam::UserProfile>(0));
+
+  InitializeKernelGuestGlobals();
+  kernel_version_ = KernelVersion(cvars::kernel_build_version);
+  content_manager_ = std::make_unique<xam::ContentManager>(this, content_root);
+
+  tls_bitmap_.Resize(2048);
+
+  auto hc_loc_heap = memory_->LookupHeap(strange_hardcoded_page_);
+  bool fixed_alloc_worked = hc_loc_heap->AllocFixed(
+      strange_hardcoded_page_, 65536, 0,
+      kMemoryAllocationCommit | kMemoryAllocationReserve,
+      kMemoryProtectRead | kMemoryProtectWrite);
+
+  xenia_assert(fixed_alloc_worked);
+}
+
+std::unique_ptr<KernelState> KernelState::CreateForTesting(
+    Memory* memory, cpu::Processor* processor,
+    vfs::VirtualFileSystem* file_system,
+    const std::filesystem::path& content_root) {
+  auto kernel_state = std::unique_ptr<KernelState>(
+      new KernelState(nullptr, memory, processor, file_system, content_root));
+  return kernel_state;
+}
+
 KernelState::~KernelState() {
   SetExecutableModule(nullptr);
 
@@ -119,7 +161,9 @@ KernelState::~KernelState() {
 KernelState* KernelState::shared() { return shared_kernel_state_; }
 
 uint32_t KernelState::title_id() const {
-  assert_not_null(executable_module_);
+  if (!executable_module_) {
+    return 0;
+  }
 
   xex2_opt_execution_info* exec_info = 0;
   executable_module_->GetOptHeader(XEX_HEADER_EXECUTION_INFO, &exec_info);
@@ -1088,6 +1132,10 @@ bool KernelState::Restore(ByteStream* stream) {
 }
 
 uint8_t KernelState::GetConnectedUsers() const {
+  if (!emulator_) {
+    return 1;
+  }
+
   auto input_sys = emulator_->input_system();
 
   auto lock = input_sys->lock();

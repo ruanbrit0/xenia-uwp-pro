@@ -68,6 +68,16 @@ struct X_USER_PROFILE_SETTING {
 };
 static_assert_size(X_USER_PROFILE_SETTING, 40);
 
+struct X_USER_SIGNIN_INFO {
+  xe::be<uint64_t> xuid;
+  xe::be<uint32_t> unk08;  // maybe zero?
+  xe::be<uint32_t> signin_state;
+  xe::be<uint32_t> unk10;  // ?
+  xe::be<uint32_t> unk14;  // ?
+  char name[16];
+};
+static_assert_size(X_USER_SIGNIN_INFO, 40);
+
 class UserSetting {
  public:
   template <typename T>

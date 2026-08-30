@@ -213,8 +213,9 @@ struct LOAD_VECTOR_SHL_I8
       }
     } else {
       // TODO(benvanik): find a cheaper way of doing this.
-      // chrispy: removed mask, ppc_emit_altivec already pre-ands it.
-      e.vmovd(e.xmm0, i.src1.reg().cvt32());
+      e.mov(e.eax, i.src1.reg().cvt32());
+      e.and_(e.eax, 0xF);
+      e.vmovd(e.xmm0, e.eax);
       // broadcast byte
       // dont use broadcastb with avx2, its slower than shuf
       e.vpshufb(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMZero));
@@ -259,9 +260,10 @@ struct LOAD_VECTOR_SHR_I8
     } else {
       // TODO(benvanik): find a cheaper way of doing this.
 
-      // chrispy: removed mask, ppc_emit_altivec already pre-ands it. removed
-      // lookup as well, compute from LVSR base instead
-      e.vmovd(e.xmm0, i.src1.reg().cvt32());
+      // Compute from LVSR base instead of looking up a full table.
+      e.mov(e.eax, i.src1.reg().cvt32());
+      e.and_(e.eax, 0xF);
+      e.vmovd(e.xmm0, e.eax);
       e.vmovdqa(e.xmm1, e.GetXmmConstPtr(XMMLVSRTableBase));
       // broadcast byte
       // dont use broadcastb with avx2, its slower than shuf
@@ -934,6 +936,11 @@ struct VECTOR_SHL_V128
 
         e.vpmovzxbd(e.ymm2, i.src2);
         e.vpmovzxbd(e.ymm3, e.xmm3);
+        e.mov(e.eax, 7);
+        e.vmovd(e.xmm4, e.eax);
+        e.vpbroadcastd(e.ymm4, e.xmm4);
+        e.vpand(e.ymm2, e.ymm2, e.ymm4);
+        e.vpand(e.ymm3, e.ymm3, e.ymm4);
 
         e.vpsllvd(e.ymm0, e.ymm0, e.ymm2);
         e.vpsllvd(e.ymm1, e.ymm1, e.ymm3);
@@ -944,9 +951,9 @@ struct VECTOR_SHL_V128
         e.vpshufb(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMIntsToBytes));
         e.vpshufb(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMIntsToBytes));
 
-        e.vpunpckldq(e.xmm0, e.xmm0, e.xmm1);
-        e.vpunpckldq(e.xmm2, e.xmm2, e.xmm3);
-        e.vpunpcklqdq(i.dest, e.xmm0, e.xmm2);
+        e.vpunpckldq(e.xmm0, e.xmm0, e.xmm2);
+        e.vpunpckldq(e.xmm1, e.xmm1, e.xmm3);
+        e.vpunpcklqdq(i.dest, e.xmm0, e.xmm1);
         return;
       } else {
         vec128_t constmask = i.src2.constant();
@@ -994,9 +1001,9 @@ struct VECTOR_SHL_V128
           e.vpshufb(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMIntsToBytes));
           e.vpshufb(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMIntsToBytes));
 
-          e.vpunpckldq(e.xmm0, e.xmm0, e.xmm1);
-          e.vpunpckldq(e.xmm2, e.xmm2, e.xmm3);
-          e.vpunpcklqdq(i.dest, e.xmm0, e.xmm2);
+          e.vpunpckldq(e.xmm0, e.xmm0, e.xmm2);
+          e.vpunpckldq(e.xmm1, e.xmm1, e.xmm3);
+          e.vpunpcklqdq(i.dest, e.xmm0, e.xmm1);
 
           return;
         }
@@ -1025,6 +1032,7 @@ struct VECTOR_SHL_V128
 
     e.L(looper);
     e.movzx(e.ecx, e.byte[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 7);
 
     e.shl(e.byte[e.rsp + stack_offset_src1 + e.rdx], e.cl);
 
@@ -1058,7 +1066,7 @@ struct VECTOR_SHL_V128
       }
       if (all_same) {
         // Every count is the same, so we can use vpsllw.
-        e.vpsllw(i.dest, src1, shamt.u16[0] & 0xF);
+        e.vpsllw(i.dest, src1, static_cast<uint8_t>(shamt.u16[0] & 0xF));
         return;
       }
     }
@@ -1103,6 +1111,7 @@ struct VECTOR_SHL_V128
 
     e.L(looper);
     e.movzx(e.ecx, e.word[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 0xF);
 
     e.shl(e.word[e.rsp + stack_offset_src1 + e.rdx], e.cl);
 
@@ -1305,6 +1314,7 @@ struct VECTOR_SHR_V128
     // movzx is to eliminate any possible dep on previous value of rcx at start
     // of loop
     e.movzx(e.ecx, e.byte[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 7);
     // maybe using a memory operand as the left side isn't the best idea lol,
     // still better than callnativesafe though agners docs have no timing info
     // on shx [m], cl so shrug
@@ -1333,7 +1343,7 @@ struct VECTOR_SHR_V128
       }
       if (all_same) {
         // Every count is the same, so we can use vpsllw.
-        e.vpsrlw(i.dest, i.src1, shamt.u16[0] & 0xF);
+        e.vpsrlw(i.dest, i.src1, static_cast<uint8_t>(shamt.u16[0] & 0xF));
         return;
       }
     }
@@ -1384,6 +1394,7 @@ struct VECTOR_SHR_V128
 
     e.L(looper);
     e.movzx(e.ecx, e.word[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 0xF);
 
     e.shr(e.word[e.rsp + stack_offset_src1 + e.rdx], e.cl);
 
@@ -1577,8 +1588,8 @@ struct VECTOR_SHA_V128
         e.vpmovsxbw(e.xmm0, to_be_shifted);  //_mm_srai_epi16 / psraw
         e.vpunpckhqdq(e.xmm2, to_be_shifted, to_be_shifted);
         e.vpmovsxbw(e.xmm1, e.xmm2);
-        e.vpsraw(e.xmm0, shamt.u8[0]);
-        e.vpsraw(e.xmm1, shamt.u8[0]);
+        e.vpsraw(e.xmm0, shamt.u8[0] & 7);
+        e.vpsraw(e.xmm1, shamt.u8[0] & 7);
         e.vpacksswb(i.dest, e.xmm0, e.xmm1);
         return;
       }
@@ -1604,6 +1615,7 @@ struct VECTOR_SHA_V128
     // movzx is to eliminate any possible dep on previous value of rcx at start
     // of loop
     e.movzx(e.ecx, e.byte[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 7);
     // maybe using a memory operand as the left side isn't the best idea lol,
     // still better than callnativesafe though agners docs have no timing info
     // on shx [m], cl so shrug
@@ -1683,6 +1695,7 @@ struct VECTOR_SHA_V128
 
     e.L(looper);
     e.movzx(e.ecx, e.word[e.rsp + stack_offset_src2 + e.rdx]);
+    e.and_(e.ecx, 0xF);
 
     e.sar(e.word[e.rsp + stack_offset_src1 + e.rdx], e.cl);
 
@@ -2726,14 +2739,29 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     e.vmovaps(i.dest, e.xmm0);
   }
 
+  static __m128i EmulateFLOAT16_4(void*, __m128 src1) {
+    alignas(16) float a[4];
+    alignas(16) uint16_t b[8];
+    _mm_store_ps(a, src1);
+    std::memset(b, 0, sizeof(b));
+
+    for (int i = 0; i < 4; i++) {
+      b[7 - (i ^ 2)] = float_to_xenos_half(a[i], false, true);
+    }
+
+    return _mm_load_si128(reinterpret_cast<__m128i*>(b));
+  }
+
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
     if (!i.src1.is_constant) {
-      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_4));
+      e.vmovaps(i.dest, e.xmm0);
     } else {
       vec128_t result = vec128b(0);
       for (unsigned idx = 0; idx < 4; ++idx) {
         result.u16[(7 - (idx ^ 2))] =
-            float_to_xenos_half(i.src1.constant().f32[idx]);
+            float_to_xenos_half(i.src1.constant().f32[idx], false, true);
       }
 
       e.LoadConstantXmm(i.dest, result);
@@ -2749,8 +2777,10 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       src = i.src1;
     }
     // Saturate.
+    e.vcmpeqps(e.xmm0, src, e.GetXmmConstPtr(XMMZero));
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
     e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMZero), e.xmm0);
     // Pack.
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_2));
   }
@@ -2764,8 +2794,10 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       src = i.src1;
     }
     // Saturate.
+    e.vcmpeqps(e.xmm0, src, e.GetXmmConstPtr(XMMZero));
     e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
     e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
+    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMZero), e.xmm0);
     // Pack.
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_4));
   }

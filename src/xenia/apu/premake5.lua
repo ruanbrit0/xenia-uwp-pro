@@ -17,3 +17,5 @@ project("xenia-apu")
     project_root.."/third_party/FFmpeg/",
   })
   local_platform_files()
+
+include("testing")

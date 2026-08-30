@@ -66,7 +66,7 @@ Não copiar hacks específicos de jogo sem validar se existe uma correção gera
 
 ## Ordem Recomendada De Investigação
 
-1. Começar da versão atual `1.3.2`.
+1. Começar da versão atual `1.3.3`.
 2. Instalar bundle estável no Xbox.
 3. Rodar o jogo uma vez.
 4. Copiar `xenia.log`, config e `recent.toml`.

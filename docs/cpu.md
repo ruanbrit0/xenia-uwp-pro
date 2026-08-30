@@ -113,6 +113,13 @@ add       r11, r11, r10     # add 1 page to addresses > 0xE0000000
 
 TODO
 
+## Xbox 360 Architecture Notes
+
+See [Xbox 360 Architecture Optimization Notes](xbox_360_optimization_notes.md)
+for public hardware notes relevant to this fork, including Xenon's shared L2,
+128-byte cache lines, VMX128, cache-control caveats and scheduler/threading
+heuristics for UWP/Xbox performance work.
+
 ## References
 
 ### PowerPC

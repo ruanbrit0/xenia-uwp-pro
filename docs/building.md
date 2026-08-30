@@ -39,40 +39,30 @@ drivers.
 # Format code to the style guide:
 ./xb.ps1 format
 ```
-<!--
-# Remove intermediate files and build outputs (doesn't work on Linux):
-xb clean
 
-# Check for lint errors with clang-format:
-xb lint
+## Testing
 
-# Run the style checker on all code:
-xb style
+On Windows in this UWP fork, run commands through `./xb.ps1`.
 
-# Remove all build/ output and do a hard git reset:
-xb nuke
+Generate PPC test binaries before running tests in a clean environment:
 
-# Runs the clang-tidy checker on all code:
-xb tidy
+```powershell
+./xb.ps1 gentests
+```
 
+Run the default test suite:
 
-## Testing:
+```powershell
+./xb.ps1 test
+```
 
-# Generate tests:
-xb gentests
+Run GPU trace diff tests:
 
-# Run tests:
-xb test
+```powershell
+./xb.ps1 gputest
+```
 
-# Run GPU tests:
-xb gputest
-
-
-## Other:
-
-# Generate SPIR-V binaries and header files:
-xb genspirv
--->
+See `docs/testing.md` for the full test flow.
 
 #### Debugging
 

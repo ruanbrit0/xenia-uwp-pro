@@ -308,14 +308,14 @@ dword_result_t xeXamContentCreate(dword_t /*user_index*/, lpstring_t root_name,
 
     if (disposition == kDispositionState::Create) {
       result = content_manager->CreateContent(root_name, content_data);
-      if (XSUCCEEDED(result)) {
+      if (result == X_ERROR_SUCCESS) {
         content_manager->WriteContentHeaderFile(&content_data);
       }
     } else if (disposition == kDispositionState::Open) {
       result = content_manager->OpenContent(root_name, content_data);
     }
 
-    if (license_mask_ptr && XSUCCEEDED(result)) {
+    if (license_mask_ptr && result == X_ERROR_SUCCESS) {
       *license_mask_ptr = 0;  // Stub!
 
       // Set license only for DLCs

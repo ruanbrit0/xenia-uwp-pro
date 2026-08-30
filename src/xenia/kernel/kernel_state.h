@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <filesystem>
 #include <functional>
 #include <list>
 #include <memory>
@@ -172,6 +173,11 @@ class KernelState {
  public:
   explicit KernelState(Emulator* emulator);
   ~KernelState();
+
+  static std::unique_ptr<KernelState> CreateForTesting(
+      Memory* memory, cpu::Processor* processor,
+      vfs::VirtualFileSystem* file_system,
+      const std::filesystem::path& content_root = {});
 
   static KernelState* shared();
 
@@ -341,6 +347,9 @@ class KernelState {
                              uint32_t cpu);
 
  private:
+  KernelState(Emulator* emulator, Memory* memory, cpu::Processor* processor,
+              vfs::VirtualFileSystem* file_system,
+              const std::filesystem::path& content_root);
   void LoadKernelModule(object_ref<KernelModule> kernel_module);
   void InitializeProcess(X_KPROCESS* process, uint32_t type, char unk_18,
                          char unk_19, char unk_1A);

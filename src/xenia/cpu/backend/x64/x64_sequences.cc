@@ -348,22 +348,22 @@ struct CONVERT_I64_F64
     : Sequence<CONVERT_I64_F64, I<OPCODE_CONVERT, I64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    e.xor_(e.eax, e.eax);
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
 
-    e.vcomisd(src1, e.GetXmmConstPtr(XmmConst::XMMZero));
+    Xbyak::Label convert, done;
+    e.vcomisd(src1, e.GetXmmConstPtr(XmmConst::XMMPosLongMinPD));
+    e.jp(convert, e.T_NEAR);
+    e.jb(convert, e.T_NEAR);
+    e.mov(i.dest, INT64_MAX);
+    e.jmp(done, e.T_NEAR);
+
+    e.L(convert);
     if (i.instr->flags == ROUND_TO_ZERO) {
       e.vcvttsd2si(i.dest, src1);
     } else {
       e.vcvtsd2si(i.dest, src1);
     }
-    // cf set if less than
-    e.setnc(e.cl);
-    e.cmp(i.dest, -1LL);
-    // if dest == 0x80000000 and not inp < 0 then dest = 0x7FFFFFFF
-    e.seto(e.al);
-    e.and_(e.al, e.cl);
-    e.sub(i.dest, e.rax);
+    e.L(done);
   }
 };
 struct CONVERT_F32_I32
@@ -1314,7 +1314,11 @@ struct ADD_I64 : Sequence<ADD_I64, I<OPCODE_ADD, I64Op, I64Op, I64Op>> {
 };
 struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_impossible_sequence(ADD_F32);
+    e.ChangeMxcsrMode(MXCSRMode::Fpu);
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    e.vaddss(i.dest, src1, src2);
   }
 };
 struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
@@ -1432,7 +1436,12 @@ struct SUB_I64 : Sequence<SUB_I64, I<OPCODE_SUB, I64Op, I64Op, I64Op>> {
 };
 struct SUB_F32 : Sequence<SUB_F32, I<OPCODE_SUB, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_impossible_sequence(SUB_F32);
+    assert_true(!i.instr->flags);
+    e.ChangeMxcsrMode(MXCSRMode::Fpu);
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    e.vsubss(i.dest, src1, src2);
   }
 };
 struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
@@ -1573,7 +1582,12 @@ struct MUL_I64 : Sequence<MUL_I64, I<OPCODE_MUL, I64Op, I64Op, I64Op>> {
 };
 struct MUL_F32 : Sequence<MUL_F32, I<OPCODE_MUL, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_impossible_sequence(MUL_F32);
+    assert_true(!i.instr->flags);
+    e.ChangeMxcsrMode(MXCSRMode::Fpu);
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    e.vmulss(i.dest, src1, src2);
   }
 };
 struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
@@ -1852,7 +1866,12 @@ struct DIV_I64 : Sequence<DIV_I64, I<OPCODE_DIV, I64Op, I64Op, I64Op>> {
 };
 struct DIV_F32 : Sequence<DIV_F32, I<OPCODE_DIV, F32Op, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_impossible_sequence(DIV_F32);
+    assert_true(!i.instr->flags);
+    e.ChangeMxcsrMode(MXCSRMode::Fpu);
+
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+    e.vdivss(i.dest, src1, src2);
   }
 };
 struct DIV_F64 : Sequence<DIV_F64, I<OPCODE_DIV, F64Op, F64Op, F64Op>> {
@@ -1919,16 +1938,8 @@ struct MUL_ADD_V128
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm2);
-    if (e.IsFeatureEnabled(kX64EmitFMA)) {
-      // todo: this is garbage
-      e.vmovaps(e.xmm3, src1);
-      e.vfmadd213ps(e.xmm3, src2, src3);
-      e.vmovaps(i.dest, e.xmm3);
-    } else {
-      // todo: might need to use x87 in this case...
-      e.vmulps(e.xmm3, src1, src2);
-      e.vaddps(i.dest, e.xmm3, src3);
-    }
+    e.vmulps(e.xmm3, src1, src2);
+    e.vaddps(i.dest, e.xmm3, src3);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_MUL_ADD, MUL_ADD_F32, MUL_ADD_F64, MUL_ADD_V128);

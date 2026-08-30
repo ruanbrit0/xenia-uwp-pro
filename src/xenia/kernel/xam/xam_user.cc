@@ -96,16 +96,6 @@ dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
 DECLARE_XAM_EXPORT2(XamUserGetSigninState, kUserProfiles, kImplemented,
                     kHighFrequency);
 
-typedef struct {
-  xe::be<uint64_t> xuid;
-  xe::be<uint32_t> unk08;  // maybe zero?
-  xe::be<uint32_t> signin_state;
-  xe::be<uint32_t> unk10;  // ?
-  xe::be<uint32_t> unk14;  // ?
-  char name[16];
-} X_USER_SIGNIN_INFO;
-static_assert_size(X_USER_SIGNIN_INFO, 40);
-
 X_HRESULT_result_t XamUserGetSigninInfo_entry(
     dword_t user_index, dword_t flags, pointer_t<X_USER_SIGNIN_INFO> info) {
   if (!info) {

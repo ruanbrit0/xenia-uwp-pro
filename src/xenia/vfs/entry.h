@@ -134,6 +134,8 @@ class Entry {
   virtual bool DeleteEntryInternal(Entry* entry) { return false; }
   virtual void RenameEntryInternal(const std::filesystem::path file_path) {}
 
+  friend struct XContentContainerEntryTestPeer;
+
   xe::global_critical_region global_critical_region_;
   Device* device_;
   Entry* parent_;

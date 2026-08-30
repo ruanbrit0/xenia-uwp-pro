@@ -28,6 +28,8 @@ namespace testing {
 
 using xe::cpu::ppc::PPCContext;
 
+constexpr uint32_t kTestFunctionAddress = 0x82000000;
+
 class TestFunction {
  public:
   TestFunction(std::function<void(hir::HIRBuilder& b)> generator) {
@@ -50,13 +52,14 @@ class TestFunction {
     for (auto& processor : processors) {
       auto module = std::make_unique<xe::cpu::TestModule>(
           processor.get(), "Test",
-          [](uint64_t address) { return address == 0x80000000; },
+          [](uint64_t address) { return address == kTestFunctionAddress; },
           [generator](hir::HIRBuilder& b) {
             generator(b);
             return true;
           });
       processor->AddModule(std::move(module));
-      processor->backend()->CommitExecutableRange(0x80000000, 0x80010000);
+      processor->backend()->CommitExecutableRange(
+          kTestFunctionAddress, kTestFunctionAddress + 0x10000);
     }
   }
 
@@ -68,13 +71,15 @@ class TestFunction {
   void Run(std::function<void(PPCContext*)> pre_call,
            std::function<void(PPCContext*)> post_call) {
     for (auto& processor : processors) {
-      auto fn = processor->ResolveFunction(0x80000000);
+      auto fn = processor->ResolveFunction(kTestFunctionAddress);
+      REQUIRE(fn != nullptr);
+      REQUIRE(static_cast<GuestFunction*>(fn)->machine_code() != nullptr);
 
       uint32_t stack_size = 64 * 1024;
       uint32_t stack_address = memory_size - stack_size;
       uint32_t thread_state_address = stack_address - 0x1000;
-      auto thread_state = std::make_unique<ThreadState>(processor.get(), 0x100);
-      assert_always();  // TODO: Allocate a thread stack!!!
+      auto thread_state = std::make_unique<ThreadState>(
+          processor.get(), 0x100, stack_address, thread_state_address);
       auto ctx = thread_state->context();
       ctx->lr = 0xBCBCBCBC;
 

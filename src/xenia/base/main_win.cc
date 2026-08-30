@@ -13,6 +13,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/main_win.h"
+#include "xenia/base/platform.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/base/string.h"
 
@@ -118,6 +119,10 @@ bool ParseWin32LaunchArguments(
 }
 
 int InitializeWin32App(const std::string_view app_name) {
+#if XE_ARCH_AMD64 == 1
+  amd64::InitFeatureFlags();
+#endif
+
   // Initialize logging. Needs parsed FLAGS.
   xe::InitializeLogging(app_name);
 

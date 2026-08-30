@@ -24,6 +24,18 @@ using xe::cpu::compiler::Compiler;
 using xe::cpu::hir::HIRBuilder;
 namespace passes = xe::cpu::compiler::passes;
 
+class HirBuilderScope {
+ public:
+  explicit HirBuilderScope(HIRBuilder* builder) : builder_(builder) {
+    builder_->MakeCurrent();
+  }
+
+  ~HirBuilderScope() { builder_->RemoveCurrent(); }
+
+ private:
+  HIRBuilder* builder_;
+};
+
 TestModule::TestModule(Processor* processor, const std::string_view name,
                        std::function<bool(uint32_t)> contains_address,
                        std::function<bool(hir::HIRBuilder&)> generate)
@@ -85,6 +97,7 @@ Symbol::Status TestModule::DeclareFunction(uint32_t address,
     // Reset() all caching when we leave.
     xe::make_reset_scope(compiler_);
     xe::make_reset_scope(assembler_);
+    HirBuilderScope builder_scope(builder_.get());
 
     if (!generate_(*builder_.get())) {
       function->set_status(Symbol::Status::kFailed);
