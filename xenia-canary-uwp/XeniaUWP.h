@@ -11,6 +11,8 @@ struct fire_and_forget;
 }
 
 namespace xe {
+class Emulator;
+
 namespace ui {
 class Window;
 }
@@ -19,6 +21,7 @@ class Window;
 namespace UWP {
 void StartXenia();
 void ExecutePendingFunctionsFromUIThread();
+void RegisterXeniaEmulator(xe::Emulator* emulator);
 void RegisterXeniaWindow(xe::ui::Window* window);
 void UpdateImGuiIO();
 

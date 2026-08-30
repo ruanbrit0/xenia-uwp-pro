@@ -376,6 +376,7 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
   LoadRecentlyLaunchedTitles();
 
 #if XE_PLATFORM_WINRT
+  UWP::RegisterXeniaEmulator(emulator_);
   XELOGI("UWP EmulatorWindow constructor: skip_frontend={}, has_game_path={}",
          cvars::skip_frontend, UWP::HasGamePath());
   if (cvars::skip_frontend) {

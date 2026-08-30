@@ -21,6 +21,7 @@
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/sampler_info.h"
+#include "xenia/gpu/shader.h"
 #include "xenia/gpu/texture_info.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
@@ -53,6 +54,10 @@ DEFINE_bool(clear_memory_page_state, false,
 
 namespace xe {
 namespace gpu {
+
+namespace {
+constexpr uint32_t kTraceSyntheticPacketBase = 0x1F000000;
+}
 
 void CommonSaveGPUSetting(CommonGPUSetting setting, uint64_t value) {
   switch (setting) {
@@ -212,6 +217,25 @@ void CommandProcessor::CallInThread(std::function<void()> fn) {
   } else {
     pending_fns_.push(std::move(fn));
   }
+}
+
+void CommandProcessor::ExecutePacket(const uint32_t* packet_data,
+                                     uint32_t count) {
+  RingBuffer old_reader = reader_;
+
+  new (&reader_)
+      RingBuffer{reinterpret_cast<uint8_t*>(const_cast<uint32_t*>(packet_data)),
+                 count * sizeof(uint32_t)};
+  reader_.set_write_offset(count * sizeof(uint32_t));
+
+  do {
+    if (!ExecutePacket()) {
+      XELOGE("**** ExecutePacket: Failed to execute packet.");
+      assert_always();
+      break;
+    }
+  } while (reader_.read_count());
+  reader_ = old_reader;
 }
 
 void CommandProcessor::ClearCaches() {}
@@ -781,9 +805,45 @@ void CommandProcessor::InitializeTrace() {
   trace_writer_.WriteRegisters(
       0, reinterpret_cast<const uint32_t*>(register_file_->values),
       RegisterFile::kRegisterCount, false);
+  WriteTraceShaderLoad(xenos::ShaderType::kVertex, active_vertex_shader_);
+  WriteTraceShaderLoad(xenos::ShaderType::kPixel, active_pixel_shader_);
 
   trace_writer_.WriteGammaRamp(gamma_ramp_256_entry_table(),
                                gamma_ramp_pwl_rgb(), gamma_ramp_rw_component_);
+}
+
+void CommandProcessor::WriteTraceShaderLoad(xenos::ShaderType shader_type,
+                                            const Shader* shader) {
+  if (!shader || shader->type() != shader_type) {
+    return;
+  }
+
+  const auto& ucode_data = shader->ucode_data();
+  uint32_t ucode_dword_count = uint32_t(ucode_data.size());
+  uint32_t payload_dword_count = 2 + ucode_dword_count;
+  if (payload_dword_count > 0x4000) {
+    XELOGW(
+        "Skipping active {} shader in trace: {} dwords exceed PM4 packet "
+        "payload limit",
+        shader_type == xenos::ShaderType::kVertex ? "vertex" : "pixel",
+        ucode_dword_count);
+    return;
+  }
+
+  std::vector<uint32_t> packet;
+  packet.reserve(1 + payload_dword_count);
+  packet.push_back(xe::byte_swap(uint32_t(3u << 30) |
+                                 ((payload_dword_count - 1) << 16) |
+                                 (PM4_IM_LOAD_IMMEDIATE << 8)));
+  packet.push_back(xe::byte_swap(uint32_t(shader_type)));
+  packet.push_back(xe::byte_swap(ucode_dword_count));
+  for (uint32_t ucode_dword : ucode_data) {
+    packet.push_back(xe::byte_swap(ucode_dword));
+  }
+
+  trace_writer_.WritePacketStart(kTraceSyntheticPacketBase, packet.data(),
+                                 uint32_t(packet.size()));
+  trace_writer_.WritePacketEnd();
 }
 #define COMMAND_PROCESSOR CommandProcessor
 #include "pm4_command_processor_implement.h"

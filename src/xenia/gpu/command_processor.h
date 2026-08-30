@@ -123,6 +123,8 @@ class CommandProcessor {
 
   virtual void TracePlaybackWroteMemory(uint32_t base_ptr, uint32_t length) = 0;
 
+  void ExecutePacket(const uint32_t* packet_data, uint32_t count);
+
   void RestoreRegisters(uint32_t first_register,
                         const uint32_t* register_values,
                         uint32_t register_count, bool execute_callbacks);
@@ -253,6 +255,8 @@ class CommandProcessor {
   }
 
   virtual void InitializeTrace();
+  void WriteTraceShaderLoad(xenos::ShaderType shader_type,
+                            const Shader* shader);
 
   Memory* memory_ = nullptr;
   kernel::KernelState* kernel_state_ = nullptr;

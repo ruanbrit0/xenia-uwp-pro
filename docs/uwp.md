@@ -4,7 +4,7 @@ Este documento descreve o fluxo local deste fork UWP. O build desktop herdado do
 
 ## Versao Atual
 
-A base atual e `1.3.1` (`1.3.1.0` no manifesto). Esta versao preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes, diagnostico e busca de jogos. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
+A base atual e `1.3.2` (`1.3.2.0` no manifesto). Esta versao preserva o baseline `1.1.13` de XMA/XContent/SVOD no UWP, mantem a correcao geral no loader XEX/XDL e adiciona melhorias no frontend UWP para idioma, configuracoes, diagnostico e busca de jogos. Ainda ha lags e FPS baixo; compatibilidade e desempenho continuam experimentais.
 
 ## Requisitos
 
@@ -58,7 +58,7 @@ Target -> Local Machine
 O pacote Debug de teste e gerado em:
 
 ```text
-xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.1.0_Debug_Test/
+xenia-canary-uwp/AppPackages/xenia-canary-uwp/xenia-canary-uwp_1.3.2.0_Debug_Test/
 ```
 
 Artefatos em `xenia-canary-uwp/AppPackages/`, `xenia-canary-uwp/x64/` e `xenia-canary-uwp/xenia-canary-uwp/` sao saida local de build e nao devem ser commitados.

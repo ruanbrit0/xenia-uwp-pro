@@ -111,7 +111,8 @@ void TracePlayer::PlayTraceOnThread(const uint8_t* trace_data,
   playing_trace_ = true;
   auto trace_ptr = trace_data;
   bool pending_break = false;
-  const PacketStartCommand* pending_packet = nullptr;
+  const uint32_t* pending_packet_data = nullptr;
+  uint32_t pending_packet_count = 0;
   while (trace_ptr < trace_data + trace_size) {
     playback_percent_ = uint32_t(
         (float(trace_ptr - trace_data) / float(trace_end - trace_data)) *
@@ -148,19 +149,19 @@ void TracePlayer::PlayTraceOnThread(const uint8_t* trace_data,
       case TraceCommandType::kPacketStart: {
         auto cmd = reinterpret_cast<const PacketStartCommand*>(trace_ptr);
         trace_ptr += sizeof(*cmd);
-        std::memcpy(memory->TranslatePhysical(cmd->base_ptr), trace_ptr,
-                    cmd->count * 4);
+        pending_packet_data = reinterpret_cast<const uint32_t*>(trace_ptr);
+        pending_packet_count = cmd->count;
         trace_ptr += cmd->count * 4;
-        pending_packet = cmd;
         break;
       }
       case TraceCommandType::kPacketEnd: {
         auto cmd = reinterpret_cast<const PacketEndCommand*>(trace_ptr);
         trace_ptr += sizeof(*cmd);
-        if (pending_packet) {
-          command_processor->ExecutePacket(pending_packet->base_ptr,
-                                           pending_packet->count);
-          pending_packet = nullptr;
+        if (pending_packet_data) {
+          command_processor->ExecutePacket(pending_packet_data,
+                                           pending_packet_count);
+          pending_packet_data = nullptr;
+          pending_packet_count = 0;
         }
         if (pending_break) {
           playing_trace_ = false;

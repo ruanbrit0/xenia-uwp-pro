@@ -2570,6 +2570,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   auto vertex_shader = static_cast<D3D12Shader*>(active_vertex_shader());
   if (!vertex_shader) {
     // Always need a vertex shader.
+    XELOGGPU("D3D12 draw skipped: no active vertex shader");
     return false;
   }
   pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
@@ -2614,6 +2615,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   // Process primitives.
   PrimitiveProcessor::ProcessingResult primitive_processing_result;
   if (!primitive_processor_->Process(primitive_processing_result)) {
+    XELOGGPU("D3D12 draw skipped: primitive processing failed");
     return false;
   }
   if (!primitive_processing_result.host_draw_vertex_count) {
@@ -2650,6 +2652,7 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   if (!render_target_cache_->Update(is_rasterization_done,
                                     normalized_depth_control,
                                     normalized_color_mask, *vertex_shader)) {
+    XELOGGPU("D3D12 draw skipped: render target update failed");
     return false;
   }
 

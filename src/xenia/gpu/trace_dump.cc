@@ -79,7 +79,8 @@ int TraceDump::Main(const std::vector<std::string>& args) {
   // Root file name for outputs.
   if (output_path.empty()) {
     base_output_path_ = cvars::trace_dump_path;
-    auto output_name = path.filename().replace_extension();
+    auto output_name = path.filename();
+    output_name += ".png";
 
     base_output_path_ = base_output_path_ / output_name;
   } else {
@@ -119,10 +120,17 @@ bool TraceDump::Load(const std::filesystem::path& trace_file_path) {
 }
 
 int TraceDump::Run() {
+  XELOGI("Trace dump loaded {} frame(s)", player_->frame_count());
   BeginHostCapture();
   player_->SeekFrame(0);
-  player_->SeekCommand(
-      static_cast<int>(player_->current_frame()->commands.size() - 1));
+  auto frame = player_->current_frame();
+  if (!frame || frame->commands.empty()) {
+    XELOGE("Trace frame 0 has no commands to replay");
+    return 1;
+  }
+  XELOGI("Trace dump replaying frame 0 with {} command(s)",
+         frame->commands.size());
+  player_->SeekCommand(static_cast<int>(frame->commands.size() - 1));
   player_->WaitOnPlayback();
   EndHostCapture();
 
@@ -134,15 +142,27 @@ int TraceDump::Run() {
     // Save framebuffer png.
     auto png_path = base_output_path_.replace_extension(".png");
     auto handle = filesystem::OpenFile(png_path, "wb");
+    if (!handle) {
+      XELOGE("Trace dump failed to open {} for writing",
+             xe::path_to_utf8(png_path));
+      return 1;
+    }
     auto callback = [](void* context, void* data, int size) {
       fwrite(data, 1, size, (FILE*)context);
     };
-    stbi_write_png_to_func(callback, handle, static_cast<int>(raw_image.width),
-                           static_cast<int>(raw_image.height), 4,
-                           raw_image.data.data(),
-                           static_cast<int>(raw_image.stride));
+    if (!stbi_write_png_to_func(
+            callback, handle, static_cast<int>(raw_image.width),
+            static_cast<int>(raw_image.height), 4, raw_image.data.data(),
+            static_cast<int>(raw_image.stride))) {
+      XELOGE("Trace dump failed to write {}", xe::path_to_utf8(png_path));
+      fclose(handle);
+      return 1;
+    }
     fclose(handle);
   } else {
+    XELOGE(
+        "Trace dump failed to capture guest output: presenter={}, captured=0",
+        presenter ? "present" : "missing");
     result = 1;
   }
 

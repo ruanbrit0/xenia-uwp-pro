@@ -22,21 +22,23 @@
 
 #include "third_party/imgui/imgui.h"
 
-#include "xenia/emulator.h"
-#include "xenia/base/filesystem.h"
-#include "xenia/base/memory.h"
-#include "xenia/cpu/xex_module.h"
-#include "xenia/ui/windowed_app.h"
-#include "xenia/base/cvar.h"
-#include "xenia/base/logging.h"
-#include "xenia/ui/window.h"
-#include "xenia/ui/d3d12/d3d12_provider.h"
-#include "xenia/gpu/d3d12/d3d12_graphics_system.h"
-#include "xenia/hid/xinput/xinput_hid.h"
-#include "xenia/hid/nop/nop_hid.h"
 #include "xenia/apu/xaudio2/xaudio2_audio_system.h"
-#include "xenia/config.h"
+#include "xenia/base/cvar.h"
+#include "xenia/base/filesystem.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/main_win.h"
+#include "xenia/base/memory.h"
+#include "xenia/config.h"
+#include "xenia/cpu/xex_module.h"
+#include "xenia/emulator.h"
+#include "xenia/gpu/d3d12/d3d12_graphics_system.h"
+#include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/graphics_system.h"
+#include "xenia/hid/nop/nop_hid.h"
+#include "xenia/hid/xinput/xinput_hid.h"
+#include "xenia/ui/d3d12/d3d12_provider.h"
+#include "xenia/ui/window.h"
+#include "xenia/ui/windowed_app.h"
 #include "xenia/vfs/devices/disc_image_device.h"
 #include "xenia/vfs/devices/disc_zarchive_device.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
@@ -47,6 +49,9 @@ using namespace xe::hid;
 DECLARE_string(gamepaths);
 DEFINE_string(gamepaths, "", "Paths the frontend will search for games.",
               "General");
+DEFINE_bool(uwp_controller_gpu_trace, false,
+            "Enable Xbox UWP GPU frame trace hotkey (LB+RB+Back+Start).",
+            "GPU");
 
 static std::unique_ptr<ui::WindowedApp> app = nullptr;
 static std::unique_ptr<ui::UWPWindowedAppContext> app_context = nullptr;
@@ -61,11 +66,64 @@ static std::atomic<bool> s_scanning_game_paths{false};
 static std::atomic<uint64_t> s_scan_games_found{0};
 static std::atomic<uint64_t> s_game_list_version{0};
 
+namespace {
+
+constexpr uint16_t kGpuTraceButtons =
+    X_INPUT_GAMEPAD_LEFT_SHOULDER | X_INPUT_GAMEPAD_RIGHT_SHOULDER |
+    X_INPUT_GAMEPAD_BACK | X_INPUT_GAMEPAD_START;
+
+void ConfigureUwpGpuTracePrefix() {
+  const auto trace_path =
+      std::filesystem::path(UWP::GetLocalState()) / "gpu_traces";
+  bool configured = false;
+  if (cvar::ConfigVars) {
+    auto it = cvar::ConfigVars->find("trace_gpu_prefix");
+    if (it != cvar::ConfigVars->end()) {
+      if (auto* trace_prefix =
+              dynamic_cast<cvar::ConfigVar<std::filesystem::path>*>(
+                  it->second)) {
+        trace_prefix->OverrideConfigValue(trace_path);
+        configured = true;
+      }
+    }
+  }
+  if (!configured) {
+    cvars::trace_gpu_prefix = trace_path;
+  }
+  XELOGI("UWP GPU trace prefix: {}", xe::path_to_utf8(trace_path));
+}
+
+void PollGpuTraceHotkey(uint16_t buttons) {
+  static bool trace_combo_down = false;
+
+  const bool combo_down = (buttons & kGpuTraceButtons) == kGpuTraceButtons;
+  if (!cvars::uwp_controller_gpu_trace || !combo_down) {
+    trace_combo_down = combo_down;
+    return;
+  }
+
+  if (trace_combo_down) {
+    return;
+  }
+
+  trace_combo_down = true;
+  if (!s_emulator || !s_emulator->graphics_system()) {
+    XELOGW("UWP GPU trace hotkey ignored: emulator is not ready");
+    return;
+  }
+
+  XELOGI("UWP GPU trace hotkey pressed; requesting one frame trace");
+  s_emulator->graphics_system()->RequestFrameTrace();
+}
+
+}  // namespace
+
 void UWP::StartXenia() {
   app_context = std::make_unique<ui::UWPWindowedAppContext>();
   app = xe::ui::GetWindowedAppCreator()(*app_context.get());
   
   xe::InitializeWin32App(app->GetName());
+  ConfigureUwpGpuTracePrefix();
 
   if (app->OnInitialize()) {
     RefreshPaths();
@@ -74,6 +132,10 @@ void UWP::StartXenia() {
   }
 
   //xe::ShutdownWin32App();
+}
+
+void UWP::RegisterXeniaEmulator(xe::Emulator* emulator) {
+  s_emulator = emulator;
 }
 
 void UWP::ExecutePendingFunctionsFromUIThread() {
@@ -110,6 +172,8 @@ void UWP::UpdateImGuiIO() {
 
   hid::X_INPUT_STATE state;
   if (driver->GetState(0, &state) != X_STATUS_SUCCESS) return;
+
+  PollGpuTraceHotkey(state.gamepad.buttons);
 
   io.AddKeyEvent(ImGuiKey_GamepadFaceDown, state.gamepad.buttons & X_INPUT_GAMEPAD_A);
   io.AddKeyEvent(ImGuiKey_GamepadFaceRight, state.gamepad.buttons & X_INPUT_GAMEPAD_B);

@@ -130,6 +130,21 @@ void TraceWriter::WritePacketStart(uint32_t base_ptr, uint32_t count) {
   fwrite(membase_ + base_ptr, 4, count, file_);
 }
 
+void TraceWriter::WritePacketStart(uint32_t base_ptr,
+                                   const uint32_t* packet_data,
+                                   uint32_t count) {
+  if (!file_) {
+    return;
+  }
+  PacketStartCommand cmd = {
+      TraceCommandType::kPacketStart,
+      base_ptr,
+      count,
+  };
+  fwrite(&cmd, 1, sizeof(cmd), file_);
+  fwrite(packet_data, 4, count, file_);
+}
+
 void TraceWriter::WritePacketEnd() {
   if (!file_) {
     return;

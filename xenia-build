@@ -1327,12 +1327,12 @@ class GpuTestCommand(BaseBuildCommand):
             help='Create reference files for new traces.')
 
     def execute(self, args, pass_args, cwd):
-        print('Testinging...')
+        print('Testing...')
         print('')
 
         # The test executables that will be built and run.
         test_targets = args['target'] or [
-            'xenia-gpu-vulkan-trace-dump',
+            'xenia-gpu-d3d12-trace-dump',
             ]
         args['target'] = test_targets
 
